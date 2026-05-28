@@ -1,7 +1,7 @@
 ---
 name: profile-model-manager
 description: "查看、更换和管理 Hermes 各 profile 的大模型配置（主模型、辅助模型、delegation 模型）。支持单个/批量操作、切换 provider、全 profile 一览。"
-version: 2.1.0
+version: 2.1.2
 author: 贾维斯
 metadata:
   hermes:
@@ -571,6 +571,40 @@ hermes profile list
 
 **建议：** 始终显式配置所有辅助模型，尤其是 `vision` 和 `compression`。
 
+### 🔴 错误 8：脚本全景模式只输出表头就退出（set -euo pipefail + awk 陷阱）
+
+**症状：** `bash ~/.hermes/scripts/profile-model-overview.sh` 只输出表头和分隔线就退出（exit code 2），没有任何 profile 数据。
+
+**原因：** 脚本使用 `set -euo pipefail`。`yaml_get()` 函数中的 `awk` 在 YAML 中找不到匹配行时返回 exit code 2。在 `set -e` 下，`var=$(awk ...)` 非零退出会导致整个脚本立即终止。
+
+**修复：** 在 `yaml_get()` 函数的 awk 调用末尾添加 `|| true`：
+```bash
+# 修复前（会因 awk exit 2 导致脚本退出）
+main_model=$(awk '...' "$file" 2>/dev/null)
+
+# 修复后（无匹配时返回空字符串）
+main_model=$(awk '...' "$file" 2>/dev/null || true)
+```
+
+**通用教训：** 在 `set -euo pipefail` 脚本中，所有**解析类**命令（awk/grep/sed 从文件提取值）的 command substitution 必须加 `|| true`，因为"没找到"是正常语义，不是错误。只有**操作类**命令（写文件、执行配置变更）的失败才应该触发 `set -e` 退出。
+
+### 🔴 错误 9：awk 变量名 `sub` 与 gawk 内置函数冲突（3 层 YAML 解析失败）
+
+**症状：** 详情模式中辅助模型全部显示 `(auto)`，即使 config.yaml 中已显式配置了 provider 和 model。
+
+**原因：** `yaml_get()` 的 3 层嵌套版本使用 `sub` 作为 awk 变量名传入 `-v sub="^  vision:"`。`sub` 是 gawk 的内置函数名（用于字符串替换），gawk 拒绝将其作为变量名，报 `fatal: cannot use gawk builtin 'sub' as variable name`。由于这个错误被 `2>/dev/null || true` 吞掉了，脚本不会崩溃，但所有 3 层解析（`auxiliary.vision.model` 等）静默返回空。
+
+**修复：** 将变量名从 `sub` 改为 `subsec`：
+```bash
+# 修复前（gawk 报错，静默返回空）
+awk -v sub="^  vision:" '... $0 ~ sub ...'
+
+# 修复后（正常匹配）
+awk -v subsec="^  vision:" '... $0 ~ subsec ...'
+```
+
+**通用教训：** awk 中不要使用以下变量名，它们是 gawk 内置函数：`sub`, `gsub`, `match`, `split`, `sprintf`, `substr`, `tolower`, `toupper`, `close`, `system`, `fflush`, `delete`, `typeof`, `isarray`。安全做法是加后缀或前缀，如 `subsec`、`sub_pattern`。
+
 ### 🟡 错误 7：base_url 未设置导致请求发错地址
 
 **症状：** 切换 provider 后请求发到了错误的 API 端点，返回 401 或连接超时。
@@ -700,6 +734,20 @@ hermes -p default config set model.default glm-5.1
 hermes config set model.default glm-5.1
 ```
 
+### ❌ 反模式 5：用 `sed ... | bash` 测试脚本
+
+```bash
+# ❌ 错误：管道执行时 $0 变成 'bash'，dirname "$0" 返回 /usr/bin
+sed '14a\echo DEBUG' ~/.hermes/scripts/profile-model-overview.sh | bash
+
+# ✅ 正确：直接执行
+bash ~/.hermes/scripts/profile-model-overview.sh
+# 或加 debug 用 bash -x
+bash -x ~/.hermes/scripts/profile-model-overview.sh 2>&1 | head -50
+```
+
+**原因：** 管道传入 bash 时，`$0` 是 `bash` 而非脚本路径。脚本中 `SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"` 会解析到 `/usr/bin`，导致 `PRESETS_FILE` 路径错误。
+
 ### ⚠️ 边界条件 1：批量操作中某个 profile 失败
 
 `for` 循环批量切换时，如果某个 profile 的 config.yaml 格式有误，该 profile 会失败但不影响其他。批量操作后**必须**检查所有 profile 的结果：
@@ -746,6 +794,25 @@ hermes config set delegation.model ""
 ## 11. Profile Model Manager 脚本
 
 脚本支持三种模式：
+
+### 脚本部署
+
+脚本源文件在 skill 目录中：`~/.hermes/profiles/<profile>/skills/profile-model-manager/scripts/`。使用前需部署到 `~/.hermes/scripts/`：
+
+```bash
+# 首次部署或更新脚本
+SKILL_DIR="$HOME/.hermes/profiles/cto/skills/profile-model-manager/scripts"
+cp "$SKILL_DIR/profile-model-overview.sh" ~/.hermes/scripts/
+cp "$SKILL_DIR/provider-presets.json" ~/.hermes/scripts/
+chmod +x ~/.hermes/scripts/profile-model-overview.sh
+```
+
+**⚠️ 脚本版本同步：** `~/.hermes/scripts/` 里的脚本是独立副本，不会随 skill 更新自动同步。每次更新 skill 后需要重新部署。检查版本是否同步：
+```bash
+# 比较文件大小即可快速判断
+wc -c ~/.hermes/scripts/profile-model-overview.sh \
+      ~/.hermes/profiles/cto/skills/profile-model-manager/scripts/profile-model-overview.sh
+```
 
 ### 11.1 全景模式（无参数）
 
@@ -809,3 +876,7 @@ bash ~/.hermes/scripts/profile-model-overview.sh <profile> --apply <provider>
 ## 发布到 SkillHub
 
 参见 `references/skillhub-and-github-publishing.md`（含 SkillHub Web 发布 + GitHub 仓库管理流程）。
+
+## 脚本调试记录
+
+参见 `references/script-debugging-log.md`（profile-model-overview.sh 的 bug 发现与修复过程）。
