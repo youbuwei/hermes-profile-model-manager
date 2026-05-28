@@ -8,6 +8,9 @@
 - 切换主模型、辅助模型（vision/compression/web_extract/session_search）、delegation 模型
 - 支持单个 profile 或批量操作
 - 内置 Provider 速查表和模型参考
+- **Agent 智能触发** — 自然语言即可操作，无需记命令
+- **完整排错指南** — 7 个常见错误的诊断与修复步骤
+- **反模式与边界条件** — 帮你避开配置陷阱
 
 ## 安装
 
@@ -35,6 +38,7 @@ hermes gateway restart
 
 ## 版本
 
+- v2.0.0 — 基于 SkillHub TRACE 评测优化：新增 Agent 智能触发指引、异常处理排错指南（7 个错误场景）、反模式与边界条件、操作效果示例、FAQ 扩展至 10 条
 - v1.1.0 — 优化文档结构，新增 FAQ、快速开始、限制说明；脚本增加容错处理
 - v1.0.0 — 初始版本
 
