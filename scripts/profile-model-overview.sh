@@ -92,7 +92,7 @@ yaml_get() {
       $0 ~ sec { in_sec=1; next }
       in_sec && /^[^ \t]/ { exit }
       in_sec && $0 ~ key { sub(/^[^:]*:[ \t]*/, ""); print; exit }
-    ' "$file" 2>/dev/null
+    ' "$file" 2>/dev/null || true
   elif [ $# -eq 3 ]; then
     local section="$1" sub="$2" key="$3"
     awk -v sec="^${section}:" -v sub="^  ${sub}:" -v key="^    ${key}:" '
@@ -101,7 +101,7 @@ yaml_get() {
       in_sec && $0 ~ sub  { in_sub=1; next }
       in_sub && /^  [^ \t]/ { in_sub=0 }
       in_sub && $0 ~ key { sub(/^[^:]*:[ \t]*/, ""); print; exit }
-    ' "$file" 2>/dev/null
+    ' "$file" 2>/dev/null || true
   fi
 }
 
