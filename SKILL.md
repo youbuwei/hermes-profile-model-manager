@@ -1,7 +1,7 @@
 ---
 name: profile-model-manager
 description: "查看、更换和管理 Hermes 各 profile 的大模型配置（主模型、辅助模型、delegation 模型）。支持单个/批量操作、切换 provider、全 profile 一览。"
-version: 2.0.0
+version: 2.1.0
 author: 贾维斯
 metadata:
   hermes:
@@ -45,29 +45,17 @@ metadata:
 **30 秒上手：**
 
 ```bash
-# 1. 查看当前所有 profile 模型全景
+# 查看所有 profile 模型全景
 bash ~/.hermes/scripts/profile-model-overview.sh
-```
 
-**预期输出示例：**
-```
-┌──────────────┬─────────────────┬──────────┬─────────────────┬─────────────────┬─────────────────┐
-│ Profile      │ Model           │ Provider │ Vision          │ Compression     │ Delegation      │
-├──────────────┼─────────────────┼──────────┼─────────────────┼─────────────────┼─────────────────┤
-│ default      │ mimo-v2.5-pro   │ xiaomi   │ mimo-v2-omni    │ mimo-v2.5       │ mimo-v2.5       │
-│ cto          │ mimo-v2.5-pro   │ xiaomi   │ mimo-v2-omni    │ mimo-v2.5       │ mimo-v2.5       │
-│ diary        │ mimo-v2.5-pro   │ xiaomi   │ mimo-v2-omni    │ mimo-v2.5       │ mimo-v2.5       │
-│ ...          │ ...             │ ...      │ ...             │ ...             │ ...             │
-└──────────────┴─────────────────┴──────────┴─────────────────┴─────────────────┴─────────────────┘
-```
+# 查看单个 profile 详情
+bash ~/.hermes/scripts/profile-model-overview.sh reasoner
 
-```bash
-# 2. 切换 default profile 主模型
-hermes config set model.default glm-5-turbo
-hermes config set model.provider zai
+# 预览切换到智谱的效果（不修改任何配置）
+bash ~/.hermes/scripts/profile-model-overview.sh reasoner zhipu
 
-# 3. 重启生效
-hermes gateway restart
+# 确认执行：一键切换所有模型 + 自动重启 Gateway
+bash ~/.hermes/scripts/profile-model-overview.sh reasoner --apply zhipu
 ```
 
 **前置条件：**
@@ -202,8 +190,8 @@ hermes -p <profile> config set model.base_url <base_url>
 $ hermes -p reasoner config set model.default glm-5.1
 ✅ Set model.default = glm-5.1
 
-$ hermes -p reasoner config set model.provider zai
-✅ Set model.provider = zai
+$ hermes -p reasoner config set model.provider zhipu
+✅ Set model.provider = zhipu
 ```
 
 **切换后必须重启：**
@@ -257,10 +245,10 @@ hermes -p <profile> config set delegation.provider ""
 for p in default cto diary genshin reasoner scout qian-duoduo; do
   if [ "$p" = "default" ]; then
     hermes config set model.default glm-5-turbo
-    hermes config set model.provider zai
+    hermes config set model.provider zhipu
   else
     hermes -p "$p" config set model.default glm-5-turbo
-    hermes -p "$p" config set model.provider zai
+    hermes -p "$p" config set model.provider zhipu
   fi
 done
 ```
@@ -304,29 +292,31 @@ hermes -p <profile> gateway status
 | Provider | Env 变量 | Base URL | 说明 |
 |---|---|---|---|
 | `xiaomi` | `XIAOMI_API_KEY` | `https://token-plan-cn.xiaomimimo.com/v1` | 小米 MiMo |
-| `zai` | `GLM_API_KEY` | `https://open.bigmodel.cn/api/coding/paas/v4` | 智谱 GLM |
-| `openrouter` | `OPENROUTER_API_KEY` | — | OpenRouter |
-| `anthropic` | `ANTHROPIC_API_KEY` | — | Anthropic Claude |
-| `deepseek` | `DEEPSEEK_API_KEY` | — | DeepSeek |
-| `xai` | `XAI_API_KEY` | — | xAI Grok |
-| `gemini` | `GOOGLE_API_KEY` | — | Google Gemini |
-| `openai-codex` | — (OAuth) | — | OpenAI Codex |
-| `copilot` | `COPILOT_GITHUB_TOKEN` | — | GitHub Copilot |
-| `kimi-coding` | `KIMI_API_KEY` | — | Kimi/Moonshot |
-| `minimax` | `MINIMAX_API_KEY` | — | MiniMax |
-| `alibaba` | `DASHSCOPE_API_KEY` | — | 阿里 DashScope |
+| `zhipu` | `ZHIPU_API_KEY` | `https://open.bigmodel.cn/api/coding/paas/v4` | 智谱 Coding Plan（国内，订阅制） |
+| `zhipu-direct` | `ZHIPU_API_KEY` | `https://open.bigmodel.cn/api/paas/v4` | 智谱 Direct API（国内，按量计费） |
+| `zai` | `ZAI_API_KEY` | `https://api.z.ai/api/coding/paas/v4` | 智谱 Coding Plan（国际版，订阅制） |
+| `zai-direct` | `ZAI_API_KEY` | `https://api.z.ai/api/paas/v4` | 智谱 Direct API（国际版，按量计费） |
+
+**智谱四通道说明：**
+
+- **`zhipu`** — 国内 Coding Plan，订阅制，仅限 Coding 工具环境，端点 `open.bigmodel.cn`
+- **`zhipu-direct`** — 国内通用 Direct API，按量计费，无使用场景限制，可访问全部模型（含 glm-5.1）
+- **`zai`** — 国际版 Coding Plan，订阅制，端点 `api.z.ai`
+- **`zai-direct`** — 国际版通用 Direct API，按量计费，端点 `api.z.ai`
+
+国内版和国际版使用不同的 API Key（`ZHIPU_API_KEY` vs `ZAI_API_KEY`），切换时需确认 `.env` 中有对应 key。
 
 **自定义 Provider** 在 `config.yaml` 的 `custom_providers:` 中定义：
 ```yaml
 custom_providers:
-- name: zai
+- name: zhipu
   base_url: https://open.bigmodel.cn/api/coding/paas/v4
   api_key: xxx
   api_mode: chat_completions
 ```
 
 **⚠️ Base URL 规则：**
-- 内置 provider（xiaomi/zai/openrouter 等）：`base_url` 可省略，Hermes 自动填充
+- 内置 provider（xiaomi/zhipu/openrouter 等）：`base_url` 可省略，Hermes 自动填充
 - 自定义 provider：`base_url` **必须**显式指定，否则报错
 - 切换 provider 时如果两个 provider 的 `base_url` 不同，**必须同时设置** `base_url`
 
@@ -334,15 +324,32 @@ custom_providers:
 
 ## 5. 模型参考
 
-### 智谱 ZAI
+### 智谱（国内 `zhipu` / 国际 `zai`）
+
+以下模型同时适用于 `zhipu` / `zhipu-direct` / `zai` / `zai-direct` 四个 provider。
+
+**Coding Plan 可用模型：**
 
 | 模型 | 上下文 | 最大输出 | 适用场景 |
 |---|---|---|---|
 | `glm-5-turbo` | 200K | 128K | 通用对话，高性价比 |
-| `glm-5` | 200K | 128K | 通用推理 |
-| `glm-5.1` | 200K | 128K | 复杂推理 |
-| `glm-4.7` | 200K | 128K | 旧版主力 |
+| `glm-4.7` | 200K | 128K | 通用推理，支持 thinking 模式 |
+| `glm-4.5-air` | 200K | 8K | 辅助模型专用，极致性价比 |
 
+**Direct API 额外可用模型：**
+
+| 模型 | 上下文 | 最大输出 | 适用场景 |
+| `glm-5.1` | 200K | 128K | 复杂推理，最强能力 |
+| `glm-5` | 200K | 128K | 通用推理 |
+
+**端点差异：**
+
+| Provider | Base URL | 可用模型 |
+|---|---|---|
+| `zhipu` | `open.bigmodel.cn/api/coding/paas/v4` | Coding Plan 模型 |
+| `zhipu-direct` | `open.bigmodel.cn/api/paas/v4` | 全部模型 |
+| `zai` | `api.z.ai/api/coding/paas/v4` | Coding Plan 模型 |
+| `zai-direct` | `api.z.ai/api/paas/v4` | 全部模型 |
 文档：https://docs.bigmodel.cn/cn/guide/start/model-overview
 
 ### 小米 MiMo
@@ -362,7 +369,7 @@ custom_providers:
 ```bash
 # 切到测试模型
 hermes -p reasoner config set model.default glm-5.1
-hermes -p reasoner config set model.provider zai
+hermes -p reasoner config set model.provider zhipu
 hermes -p reasoner gateway restart
 
 # ✅ 验证切换成功
@@ -392,10 +399,10 @@ hermes -p reasoner config show | grep "default:" -A1
 for p in default cto diary genshin reasoner scout qian-duoduo; do
   if [ "$p" = "default" ]; then
     hermes config set model.default glm-5-turbo
-    hermes config set model.provider zai
+    hermes config set model.provider zhipu
   else
     hermes -p "$p" config set model.default glm-5-turbo
-    hermes -p "$p" config set model.provider zai
+    hermes -p "$p" config set model.provider zhipu
   fi
 done
 
@@ -413,7 +420,7 @@ bash ~/.hermes/scripts/profile-model-overview.sh
 
 ```bash
 # 换一个更强的 vision 模型（主模型不变）
-hermes config set auxiliary.vision.provider zai
+hermes config set auxiliary.vision.provider zhipu
 hermes config set auxiliary.vision.model glm-5.1
 hermes gateway restart
 
@@ -421,7 +428,7 @@ hermes gateway restart
 hermes config show | grep -A3 "vision:"
 # 预期输出：
 #   vision:
-#     provider: zai
+#     provider: zhipu
 #     model: glm-5.1
 ```
 
@@ -430,7 +437,7 @@ hermes config show | grep -A3 "vision:"
 ```bash
 # delegation 用轻量模型，主模型保持强模型
 hermes config set delegation.model glm-5-turbo
-hermes config set delegation.provider zai
+hermes config set delegation.provider zhipu
 hermes gateway restart
 
 # ✅ 验证 delegation 和主模型分离
@@ -454,11 +461,11 @@ hermes config show | grep -E "(default:|delegation)" -A2
 grep "API_KEY\|_KEY=" ~/.hermes/profiles/<name>/.env
 
 # Step 2: 检查目标 key 是否存在
-grep "GLM_API_KEY" ~/.hermes/profiles/<name>/.env
+grep "ZHIPU_API_KEY" ~/.hermes/profiles/<name>/.env
 # 如果没有输出 → 缺少该 key
 
-# Step 3: 添加缺失的 key（以 ZAI 为例）
-echo "GLM_API_KEY=your_key_here" >> ~/.hermes/profiles/<name>/.env
+# Step 3: 添加缺失的 key（以智谱国内版为例）
+echo "ZHIPU_API_KEY=your_key_here" >> ~/.hermes/profiles/<name>/.env
 
 # Step 4: 重启 Gateway
 hermes -p <profile> gateway restart
@@ -467,7 +474,7 @@ hermes -p <profile> gateway restart
 **预防：** 切换 provider 前先检查目标 profile 的 `.env`：
 ```bash
 # 快速检查：目标 profile 是否有目标 provider 的 key
-grep -l "GLM_API_KEY" ~/.hermes/profiles/<name>/.env && echo "✅ 有 ZAI key" || echo "❌ 缺 ZAI key"
+grep -l "ZHIPU_API_KEY" ~/.hermes/profiles/<name>/.env && echo "✅ 有智谱 key" || echo "❌ 缺智谱 key"
 ```
 
 ### 🔴 错误 2："context too small"
@@ -591,10 +598,10 @@ hermes -p <profile> gateway restart
 **A:** 每个 profile 有独立的 `.env` 文件，需要确保目标 profile 的 `.env` 中有对应 key：
 ```bash
 # 检查 key 是否存在
-grep "ZAI\|XIAOMI\|DEEPSEEK" ~/.hermes/profiles/<name>/.env
+grep "ZHIPU\|XIAOMI\|DEEPSEEK" ~/.hermes/profiles/<name>/.env
 
 # 如果没有，手动添加
-echo "GLM_API_KEY=your_key_here" >> ~/.hermes/profiles/<name>/.env
+echo "ZHIPU_API_KEY=your_key_here" >> ~/.hermes/profiles/<name>/.env
 ```
 
 ### Q3: 辅助模型设为空会怎样？
@@ -633,7 +640,7 @@ hermes -p <profile> gateway restart
 
 ### Q9: 自定义 provider 和内置 provider 的区别？
 **A:**
-- **内置 provider**（xiaomi/zai/openrouter 等）：`base_url` 和 `api_key` 的 env 变量名由 Hermes 自动识别，只需设置 `provider` 名即可
+- **内置 provider**（xiaomi/zhipu/openrouter 等）：`base_url` 和 `api_key` 的 env 变量名由 Hermes 自动识别，只需设置 `provider` 名即可
 - **自定义 provider**：在 `custom_providers` 中定义，切换时必须同时设置 `base_url`
 
 ### Q10: Gateway restart 和 start 的区别？
@@ -655,18 +662,18 @@ hermes config set model.default glm-5.1
 
 # ✅ 正确：同时切换
 hermes config set model.default glm-5.1
-hermes config set model.provider zai
+hermes config set model.provider zhipu
 ```
 
 ### ❌ 反模式 2：切了 provider 不重启
 
 ```bash
 # ❌ 错误：改了配置就以为生效了
-hermes config set model.provider zai
+hermes config set model.provider zhipu
 # ...直接发消息 → 仍用旧 provider
 
 # ✅ 正确：改完必须重启
-hermes config set model.provider zai
+hermes config set model.provider zhipu
 hermes gateway restart
 ```
 
@@ -674,12 +681,12 @@ hermes gateway restart
 
 ```bash
 # ❌ 错误：直接切 provider
-hermes -p diary config set model.provider zai
+hermes -p diary config set model.provider zhipu
 
 # ✅ 正确：先检查 key 存在
-grep "GLM_API_KEY" ~/.hermes/profiles/diary/.env && \
-  hermes -p diary config set model.provider zai || \
-  echo "❌ 先添加 GLM_API_KEY 到 .env"
+grep "ZHIPU_API_KEY" ~/.hermes/profiles/diary/.env && \
+  hermes -p diary config set model.provider zhipu || \
+  echo "❌ 先添加 ZHIPU_API_KEY 到 .env"
 ```
 
 ### ❌ 反模式 4：default profile 加了 -p 参数
@@ -720,7 +727,7 @@ hermes config set delegation.model ""
 
 ### ⚠️ 边界条件 4：.env 中有同名 key 时取最后一个
 
-如果 `.env` 中有多行同一个 key（如两行 `GLM_API_KEY=xxx`），Hermes 取**最后一个**。这可能是预期行为，也可能造成困惑。
+如果 `.env` 中有多行同一个 key（如两行 `ZHIPU_API_KEY=xxx`），Hermes 取**最后一个**。这可能是预期行为，也可能造成困惑。
 
 ---
 
@@ -736,15 +743,66 @@ hermes config set delegation.model ""
 
 ---
 
-## 11. 一键全览脚本
+## 11. Profile Model Manager 脚本
 
-运行以下命令查看所有 profile 的模型全景：
+脚本支持三种模式：
+
+### 11.1 全景模式（无参数）
 
 ```bash
 bash ~/.hermes/scripts/profile-model-overview.sh
 ```
 
-脚本自动检测所有 profile，解析 config.yaml，以表格形式展示主模型、Provider、Vision、Compression、Delegation 配置。
+显示所有 profile 的模型配置表格（主模型、Provider、Vision、Compression、WebExtract、Delegation）。
+
+### 11.2 详情模式（单个 profile）
+
+```bash
+bash ~/.hermes/scripts/profile-model-overview.sh <profile>
+```
+
+显示指定 profile 的完整模型配置，包括主模型、所有辅助模型、delegation 的每个字段（provider / model / timeout / context_length 等）。
+
+### 11.3 智能切换模式（一键配全）
+
+```bash
+# 预览模式：只显示变更对比，不修改任何配置
+bash ~/.hermes/scripts/profile-model-overview.sh <profile> <provider>
+
+# 执行模式：应用所有配置 + 重启 Gateway
+bash ~/.hermes/scripts/profile-model-overview.sh <profile> --apply <provider>
+```
+
+脚本会根据 provider 预设，自动为所有角色分配合适的模型：
+
+| 角色 | 说明 |
+|---|---|
+| 主模型 | 对话用，选该 provider 最强的通用模型 |
+| vision | 图片识别，选多模态模型（无原生多模态则用主模型） |
+| compression | 上下文压缩，选轻量高速模型 |
+| web_extract | 网页内容提取，选轻量高速模型 |
+| session_search | 历史会话搜索，选轻量高速模型 |
+| delegation | 子 agent，选性价比高的模型 |
+
+**预览输出示例：**
+```
+╔══════════════════════════════════════════════════════════╗
+║  Profile: reasoner              Provider: zhipu           ║
+╚══════════════════════════════════════════════════════════╝
+
+  角色             当前值                    → 新值                     变更
+  ──────────────────────────────────────────────────────────────────────────
+  主模型           mimo-v2.5-pro             → glm-5-turbo              ✅
+  provider         xiaomi                    → zhipu                      ✅
+  vision           mimo-v2-omni              → glm-5-turbo              ✅
+  compression      mimo-v2.5                 → glm-5-turbo              ✅
+  web_extract      mimo-v2.5                 → glm-5-turbo              ✅
+  session_search   mimo-v2.5                 → glm-5-turbo              ✅
+  delegation       mimo-v2.5                 → glm-5-turbo              ✅
+
+📋 以上为预览，未做任何修改。
+💡 确认执行：bash $0 reasoner --apply zhipu
+```
 
 ---
 

@@ -30,14 +30,17 @@ cp scripts/profile-model-overview.sh ~/.hermes/scripts/profile-model-overview.sh
 # 查看所有 profile 模型全景
 bash ~/.hermes/scripts/profile-model-overview.sh
 
-# 切换 default profile 主模型
-hermes config set model.default glm-5-turbo
-hermes config set model.provider zai
-hermes gateway restart
+# 查看单个 profile 详情
+bash ~/.hermes/scripts/profile-model-overview.sh reasoner
+
+# 一键切换 provider（预览 + 执行）
+bash ~/.hermes/scripts/profile-model-overview.sh reasoner zai           # 预览
+bash ~/.hermes/scripts/profile-model-overview.sh reasoner --apply zai   # 执行
 ```
 
 ## 版本
 
+- v2.1.0 — 脚本支持单 profile 详情查看 + 按 Provider 智能配置所有模型（预览/执行双模式）；新增 10 个 Provider 模型预设
 - v2.0.0 — 基于 SkillHub TRACE 评测优化：新增 Agent 智能触发指引、异常处理排错指南（7 个错误场景）、反模式与边界条件、操作效果示例、FAQ 扩展至 10 条
 - v1.1.0 — 优化文档结构，新增 FAQ、快速开始、限制说明；脚本增加容错处理
 - v1.0.0 — 初始版本

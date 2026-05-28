@@ -1,0 +1,166 @@
+{
+  "xiaomi": {
+    "name": "小米 MiMo",
+    "env": "XIAOMI_API_KEY",
+    "models": {
+      "main": "mimo-v2.5-pro",
+      "vision": "mimo-v2-omni",
+      "compression": "mimo-v2.5",
+      "web_extract": "mimo-v2.5",
+      "session_search": "mimo-v2.5",
+      "delegation": "mimo-v2.5"
+    }
+  },
+  "zhipu": {
+    "name": "智谱 Coding Plan（国内）",
+    "env": "ZHIPU_API_KEY",
+    "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+    "note": "订阅制，仅限 Coding 工具使用",
+"models": {
+      "main": "glm-5-turbo",
+      "vision": "glm-4.6v",
+      "compression": "glm-4.5-air",
+      "web_extract": "glm-4.5-air",
+      "session_search": "glm-4.5-air",
+      "delegation": "glm-4.5-air"
+    }
+  },
+  "zhipu-direct": {
+    "name": "智谱 Direct API（国内）",
+    "env": "ZHIPU_API_KEY",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "note": "按量计费，通用 API，无使用场景限制",
+"models": {
+      "main": "glm-5.1",
+      "vision": "glm-4.6v",
+      "compression": "glm-4.5-air",
+      "web_extract": "glm-4.5-air",
+      "session_search": "glm-4.5-air",
+      "delegation": "glm-4.5-air"
+    }
+  },
+  "zai": {
+    "name": "智谱 Coding Plan（国际版）",
+    "env": "ZAI_API_KEY",
+    "base_url": "https://api.z.ai/api/coding/paas/v4",
+    "note": "国际版订阅制，仅限 Coding 工具使用",
+"models": {
+      "main": "glm-5-turbo",
+      "vision": "glm-4.6v",
+      "compression": "glm-4.5-air",
+      "web_extract": "glm-4.5-air",
+      "session_search": "glm-4.5-air",
+      "delegation": "glm-4.5-air"
+    }
+  },
+  "zai-direct": {
+    "name": "智谱 Direct API（国际版）",
+    "env": "ZAI_API_KEY",
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "note": "国际版按量计费，通用 API",
+"models": {
+      "main": "glm-5-turbo",
+      "vision": "glm-4.6v",
+      "compression": "glm-4.5-air",
+      "web_extract": "glm-4.5-air",
+      "session_search": "glm-4.5-air",
+      "delegation": "glm-4.5-air"
+    }
+  },
+  "deepseek": {
+    "name": "DeepSeek",
+    "env": "DEEPSEEK_API_KEY",
+    "models": {
+      "main": "deepseek-chat",
+      "vision": "deepseek-chat",
+      "compression": "deepseek-chat",
+      "web_extract": "deepseek-chat",
+      "session_search": "deepseek-chat",
+      "delegation": "deepseek-chat"
+    }
+  },
+  "anthropic": {
+    "name": "Anthropic Claude",
+    "env": "ANTHROPIC_API_KEY",
+    "models": {
+      "main": "claude-sonnet-4-20250514",
+      "vision": "claude-sonnet-4-20250514",
+      "compression": "claude-sonnet-4-20250514",
+      "web_extract": "claude-sonnet-4-20250514",
+      "session_search": "claude-sonnet-4-20250514",
+      "delegation": "claude-sonnet-4-20250514"
+    }
+  },
+  "xai": {
+    "name": "xAI Grok",
+    "env": "XAI_API_KEY",
+    "models": {
+      "main": "grok-3",
+      "vision": "grok-3",
+      "compression": "grok-3-mini",
+      "web_extract": "grok-3-mini",
+      "session_search": "grok-3-mini",
+      "delegation": "grok-3-mini"
+    }
+  },
+  "gemini": {
+    "name": "Google Gemini",
+    "env": "GOOGLE_API_KEY",
+    "models": {
+      "main": "gemini-2.5-pro",
+      "vision": "gemini-2.5-flash",
+      "compression": "gemini-2.5-flash",
+      "web_extract": "gemini-2.5-flash",
+      "session_search": "gemini-2.5-flash",
+      "delegation": "gemini-2.5-flash"
+    }
+  },
+  "openrouter": {
+    "name": "OpenRouter",
+    "env": "OPENROUTER_API_KEY",
+    "models": {
+      "main": "anthropic/claude-sonnet-4-20250514",
+      "vision": "anthropic/claude-sonnet-4-20250514",
+      "compression": "deepseek/deepseek-chat",
+      "web_extract": "deepseek/deepseek-chat",
+      "session_search": "deepseek/deepseek-chat",
+      "delegation": "deepseek/deepseek-chat"
+    }
+  },
+  "alibaba": {
+    "name": "阿里 DashScope",
+    "env": "DASHSCOPE_API_KEY",
+    "models": {
+      "main": "qwen-max",
+      "vision": "qwen-vl-max",
+      "compression": "qwen-plus",
+      "web_extract": "qwen-plus",
+      "session_search": "qwen-plus",
+      "delegation": "qwen-plus"
+    }
+  },
+  "minimax": {
+    "name": "MiniMax",
+    "env": "MINIMAX_API_KEY",
+    "models": {
+      "main": "MiniMax-M1",
+      "vision": "MiniMax-M1",
+      "compression": "MiniMax-M1",
+      "web_extract": "MiniMax-M1",
+      "session_search": "MiniMax-M1",
+      "delegation": "MiniMax-M1"
+    }
+  },
+  "kimi-coding": {
+    "name": "Kimi/Moonshot",
+    "env": "KIMI_API_KEY",
+    "models": {
+      "main": "kimi-latest",
+      "vision": "kimi-latest",
+      "compression": "kimi-latest",
+      "web_extract": "kimi-latest",
+      "session_search": "kimi-latest",
+      "delegation": "kimi-latest"
+    }
+  }
+}
