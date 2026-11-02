@@ -1,7 +1,7 @@
 ---
 name: profile-model-manager
 description: "查看、更换和管理 Hermes 各 profile 的大模型配置（主模型、辅助模型、delegation 模型）。支持单个/批量操作、切换 provider、全 profile 一览。"
-version: 3.5.1
+version: 3.6.0
 author: 贾维斯
 metadata:
   hermes:
@@ -35,6 +35,7 @@ metadata:
 1. 智谱一律写 `provider: hp-zai`（key）。写 `zai` 会命中已弃用的内置官方；写 `zai-coding` 是显示名、不是 key，只是靠 env 兑底暂时能跑的隐患写法。
 2. **新建自定义 provider 禁止与任何内置 provider 同名**（zai、xiaomi、openrouter、deepseek…），必须取不冲突的 key——这就是 hp-zai 这个"怪名字"的由来：为区分而故意不叫 zai。
 3. 看到旧教程/外部文档说 `provider zai`，一律理解为 `hp-zai`（本文档旧示例已全部同步）。
+4. key 的存放形态与轮换 SOP 见 §4「🔑 Key 轮换（标准流程）」：值只存 .env（四份同名变量），config 全模板引用，轮换只改 .env + 重启。
 
 ---
 
@@ -371,7 +372,8 @@ hermes -p <profile> chat -q "你是什么模型？回答模型名称即可" -Q
 
 # 方法 2.5（最权威）：直连端点看响应 model 字段。模型自述身份不可靠（会幻觉），
 # 且服务端别名映射（见 §5）会让配置名和真身不一致，只有响应的 model 字段是真相
-KEY=$(python3 -c "import yaml,os; print(yaml.safe_load(open(os.path.expanduser('~/.hermes/config.yaml')))['providers']['hp-zai']['api_key'])")
+KEY=$(grep '^ZAI_CODING_API_KEY=' ~/.hermes/.env | head -1 | cut -d= -f2)
+# ⚠️ 不能从 config 读 key：config 里存的是模板引用 ${ZAI_CODING_API_KEY}，不是真 key
 curl -s --max-time 30 https://open.bigmodel.cn/api/coding/paas/v4/chat/completions \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"model":"<配置的模型名>","messages":[{"role":"user","content":"hi"}],"max_tokens":5}' \
@@ -393,8 +395,18 @@ hermes -p <profile> gateway status
 | Provider | Env 变量 | Base URL | 说明 |
 |---|---|---|---|
 | `xiaomi` | `XIAOMI_API_KEY` | `https://token-plan-cn.xiaomimimo.com/v1` | 小米 MiMo |
-| **`hp-zai`**（自定义，显示名 zai-coding） | 内嵌于 4 份 config 的 `providers.hp-zai.api_key` | `https://open.bigmodel.cn/api/coding/paas/v4` | **主力 provider（2026-11-02 起唯一智谱入口）** — 主模型、Compression、WebExtract、SessionSearch、Delegation 全部走此端 |
-| （内置）`zai`/`Z.AI` | `ZAI_API_KEY`/`GLM_API_KEY` | 探测或 `GLM_BASE_URL` | **内置官方 provider，本环境已弃用**：env 计划清除，勿再把引用指向它；直连端知识仅旧版 Vision（glm-4.6v）场景需要 |
+| **`hp-zai`**（自定义，显示名 zai-coding） | `${ZAI_CODING_API_KEY}`（值存 4 份 .env，config 内全部为模板引用） | `https://open.bigmodel.cn/api/coding/paas/v4` | **主力 provider（唯一智谱入口）** — 主模型、Compression、WebExtract、SessionSearch、Delegation 全部走此端；轮换只改 .env + 重启 |
+| （内置）`zai`/`Z.AI` | `ZAI_API_KEY`/`GLM_API_KEY` | 探测或 `GLM_BASE_URL` | **内置官方 provider，本环境已弃用**：相关 env 已清除，勿再把引用指向它；直连端知识仅旧版 Vision（glm-4.6v）场景需要 |
+| `openrouter` | `OPENROUTER_API_KEY` | — | OpenRouter |
+| `anthropic` | `ANTHROPIC_API_KEY` | — | Anthropic Claude |
+| `deepseek` | `DEEPSEEK_API_KEY` | — | DeepSeek |
+| `xai` | `XAI_API_KEY` | — | xAI Grok |
+| `gemini` | `GOOGLE_API_KEY` | — | Google Gemini |
+| `openai-codex` | — (OAuth) | — | OpenAI Codex |
+| `copilot` | `COPILOT_GITHUB_TOKEN` | — | GitHub Copilot |
+| `kimi-coding` | `KIMI_API_KEY` | — | Kimi/Moonshot |
+| `minimax` | `MINIMAX_API_KEY` | — | MiniMax |
+| `alibaba` | `DASHSCOPE_API_KEY` | — | 阿里 DashScope |
 
 **规则（2026-06-22 确立，2026-08-27 更新 Vision 端点规则，Agent 切换模型时必须遵守）：**
 
@@ -409,16 +421,6 @@ Provider 一律写 key `hp-zai`（显示名 `zai-coding` 不是引用 ID）。�
 **口诀（2026-11-02 更新）：provider 一律 `hp-zai`；旧版视觉（glm-4.6v）节内 base_url 走直连端，其余（含新版视觉）全走 Coding Plan 端。判断依据：该视觉模型在 Coding Plan 端是否已验证支持多模态输入。**
 
 - `config.yaml` 中 `base_url` 必须显式指定，不能留空让 Hermes 自动探测（内置默认 `api.z.ai` 是全球直连端，会导致非 Vision 模型走错端）
-| `openrouter` | `OPENROUTER_API_KEY` | — | OpenRouter |
-| `anthropic` | `ANTHROPIC_API_KEY` | — | Anthropic Claude |
-| `deepseek` | `DEEPSEEK_API_KEY` | — | DeepSeek |
-| `xai` | `XAI_API_KEY` | — | xAI Grok |
-| `gemini` | `GOOGLE_API_KEY` | — | Google Gemini |
-| `openai-codex` | — (OAuth) | — | OpenAI Codex |
-| `copilot` | `COPILOT_GITHUB_TOKEN` | — | GitHub Copilot |
-| `kimi-coding` | `KIMI_API_KEY` | — | Kimi/Moonshot |
-| `minimax` | `MINIMAX_API_KEY` | — | MiniMax |
-| `alibaba` | `DASHSCOPE_API_KEY` | — | 阿里 DashScope |
 
 **自定义 Provider** 在 `config.yaml` 的 `providers:` 块中定义（key = 引用 ID，`name:` = 显示名，二者是同一个 provider）：
 ```yaml
@@ -426,7 +428,7 @@ providers:
   hp-zai:                        # key = 引用 ID，config set *.provider 写这个
     name: zai-coding             # 显示名，≠ 引用 ID
     api: https://open.bigmodel.cn/api/coding/paas/v4
-    api_key: <内嵌，勿留空>
+    api_key: ${ZAI_CODING_API_KEY}      # 模板引用，真值在 .env；轮换只改 .env + 重启
     transport: chat_completions
     default_model: glm-5.3-flash
 ```
@@ -437,6 +439,16 @@ providers:
 - **⚠️ 内置 zai 的解析优先级陷阱（仅内置 provider；自定义 hp-zai 无此问题，其 `providers.hp-zai.api` 即权威端点）：** 内置 `zai` 的解析优先级为 `GLM_BASE_URL` 环境变量 > `auth.json` 缓存 > 探测结果 > `providers.zai.api`（兑底）。详见 `hermes-gateway-api-key-debug` → `references/zai-endpoint-architecture.md` § "Base URL Resolution Priority Chain"。
 - 自定义 provider：`base_url` **必须**显式指定，否则报错
 - 切换 provider 时如果两个 provider 的 `base_url` 不同，**必须同时设置** `base_url`
+
+### 🔑 Key 轮换（标准流程）
+
+hp-zai 的 key 存放形态（2026-11-02 提督定版）：**值在 `.env` 的 `ZAI_CODING_API_KEY`（default + diary/genshin/qian 四份同名变量），config 内全部写模板引用 `${ZAI_CODING_API_KEY}`**。变量名故意与内置 zai 的 `ZAI_API_KEY`/`GLM_API_KEY` 区分——后者是已弃用内置 provider 的专属名，勿复用。
+
+轮换步骤：① 改 `.env` 里 `ZAI_CODING_API_KEY=` 的值（四份同名变量，一条 sed 全改）→ ② 重启 gateway → ③ 四 profile 各 `chat -Q` 实测。**config.yaml 一个字不用动。**
+
+轮换/改存储后的审计铁律：**同时扫旧 key 明文和 `${旧变量}` 模板引用**。换密钥变量名或删 env 后，只 grep 旧 key 字面量会漏掉 `model.api_key`、providers 块、各 auxiliary 节里的 `${OLD_VAR}` 模板——且各 profile 的 auxiliary 子集不一致（有的有 web_extract、有的只有 session_search+flush_memories），必须逐 profile 全树遍历 YAML 确认，不能假设各 profile 键位相同。
+
+`${VAR}` 的解析机制：加载进程的 `os.environ`（源码 `_ENV_REF_RE = \${([^}]+)}`），也支持 `${env:VAR}` 写法。profile 上下文由自己的 `.env` 供值——所以变量必须在对应 profile 的 `.env` 里存在，只写主 `.env` 不保证 profile 能解析到。
 
 ---
 
@@ -610,18 +622,21 @@ awk '/^model:/{found=1} found && /^  provider:/{print "provider: "$2; exit}' ~/.
 | `.env` 为空 | .env 未初始化 | 需要添加所有必要的 key |
 | provider 和 key 不匹配 | 切了 provider 但没加 key | 添加对应 key |
 
-**一键修复（key 缺失时）：**
+**一键修复（key 缺失/轮换时）：**
 ```bash
-# hp-zai 的 key 内嵌在各 profile config.yaml 的 providers.hp-zai.api_key（2026-11-02 起标准形态）
-# 若某 profile 缺失，从主 config 复制 providers: 块；勿写 .env（.env 的 ZAI_API_KEY/GLM_API_KEY 属于已弃用的内置 zai）
+# hp-zai 的 key 统一存 .env 的 ZAI_CODING_API_KEY（default + 各 profile 四份同名变量）
+# config.yaml 内全部是 ${ZAI_CODING_API_KEY} 模板引用：改 key 只改 .env + 重启，不动 config
+# 勿复用 ZAI_API_KEY / GLM_API_KEY——它们是已弃用内置 zai 的专属变量名
 # 重启生效
 hermes -p <name> gateway restart
 ```
 
 **预防检查（切换 provider 前必做）：**
 ```bash
-# 检查目标 profile 的 providers.hp-zai.api_key 是否存在且非空
-python3 -c "import yaml,os; p=os.path.expanduser('~/.hermes/profiles/<name>/config.yaml') if '<name>'!='default' else os.path.expanduser('~/.hermes/config.yaml'); k=yaml.safe_load(open(p)).get('providers',{}).get('hp-zai',{}).get('api_key',''); print('✅ 有 hp-zai key' if k else '❌ 缺 hp-zai key')"
+# ① 四份 .env 的 ZAI_CODING_API_KEY 齐全且非空
+grep -c '^ZAI_CODING_API_KEY=..' ~/.hermes/.env ~/.hermes/profiles/{diary,genshin,qian-duoduo}/.env
+# ② config 内无旧模板残留（输出空即干净）
+grep -rn '\${ZAI_API_KEY}' ~/.hermes/config.yaml ~/.hermes/profiles/*/config.yaml
 ```
 
 ### 🔴 错误 2：context too small（修复时间：~30 秒）
@@ -842,12 +857,8 @@ echo "=== 2. config.yaml 是否硬编码了 api_key ==="
 grep -A5 "^model:" ~/.hermes/profiles/$PROFILE/config.yaml | grep -E "api_key|base_url"
 echo ""
 echo "=== 3. 快速 API 测试 ==="
-python3 -c "
-import yaml
-cfg = yaml.safe_load(open('$HOME/.hermes/config.yaml'))
-key = cfg['providers'].get('hp-zai',{}).get('api_key','')
-print(f'全局 hp-zai key: {key[:10]}...{key[-4:]} (len={len(key)})')
-"
+# key 在 .env 的 ZAI_CODING_API_KEY（config 里是模板串，读 config 拿不到真 key）
+grep '^ZAI_CODING_API_KEY=' "$HOME/.hermes/.env" | awk -F= '{k=$2; print "全局 hp-zai key: " substr(k,1,10) "..." substr(k,length(k)-3) " (len=" length(k) ")"}'
 ```
 
 **诊断结果解读：**
@@ -855,7 +866,7 @@ print(f'全局 hp-zai key: {key[:10]}...{key[-4:]} (len={len(key)})')
 |---|---|---|
 | .env 中 ZAI_API_KEY 长度 < 30 | key 被截断为掩码值 | 用全局 provider 中的真实 key 替换 |
 | config.yaml 中有 `api_key: tp-cb1...` | xiaomi token 硬编码在 zai provider 配置中 | 删除 `api_key`、`base_url`、`api_mode`，只保留 `model` + `provider` |
-| 两处都正常 | 可能是全局 provider key 真的过期了 | 检查全局 `config.yaml` 中 `providers.hp-zai.api_key` |
+| 两处都正常 | 可能是 .env 里的 key 真的过期/被服务端轮换了 | 重置 key 后更新 `.env` 的 `ZAI_CODING_API_KEY` 并重启 |
 
 **一键修复（根因 1 — .env 截断）：**
 ```bash
@@ -932,10 +943,12 @@ hermes -p <profile> gateway restart
 验证方法：`hermes -p <profile> gateway status` 确认状态为 `running`。
 
 ### Q2: 切换 provider 后报 "no API key found"？
-**A:** hp-zai 的 key 内嵌在各 profile 的 `providers.hp-zai.api_key`（2026-11-02 起标准形态）；缺失时从主 config 复制 `providers:` 块。`.env` 的 `ZAI_API_KEY`/`GLM_API_KEY` 属于已弃用的内置 zai：
+**A:** hp-zai 的 key 统一放 `.env` 的 `ZAI_CODING_API_KEY`（default + diary/genshin/qian 四份同名变量；config 内全是 `${ZAI_CODING_API_KEY}` 模板引用，轮换只改 .env + 重启）。`ZAI_API_KEY`/`GLM_API_KEY` 是已弃用内置 zai 的专属名，勿复用：
 ```bash
-# 检查 key 是否内嵌存在
-python3 -c "import yaml,os; p=os.path.expanduser('~/.hermes/profiles/<name>/config.yaml') if '<name>'!='default' else os.path.expanduser('~/.hermes/config.yaml'); print('✅ 有' if yaml.safe_load(open(p)).get('providers',{}).get('hp-zai',{}).get('api_key') else '❌ 缺')"
+# ① 四份 .env 变量齐全（期望每个文件计 1）
+grep -c '^ZAI_CODING_API_KEY=' ~/.hermes/.env ~/.hermes/profiles/{diary,genshin,qian-duoduo}/.env
+# ② config 无旧模板残留（无输出即干净）
+grep -rn '\${ZAI_API_KEY}' ~/.hermes/config.yaml ~/.hermes/profiles/*/config.yaml
 ```
 
 ### Q3: 辅助模型设为空会怎样？
@@ -1107,9 +1120,9 @@ hermes gateway restart
 hermes -p diary config set model.provider hp-zai
 
 # ✅ 正确：先检查 key 存在
-grep "GLM_API_KEY" ~/.hermes/profiles/diary/.env && \
+grep '^ZAI_CODING_API_KEY=.' ~/.hermes/profiles/diary/.env && \
   hermes -p diary config set model.provider hp-zai || \
-  echo "❌ 先添加 GLM_API_KEY 到 .env"
+  echo "❌ 先在 .env 添加 ZAI_CODING_API_KEY"
 ```
 
 ### ❌ 反模式 4：在 profile config.yaml model 块中硬编码 api_key
@@ -1122,7 +1135,7 @@ grep "GLM_API_KEY" ~/.hermes/profiles/diary/.env && \
 # 修复：hermes -p <name> config set model.api_key ""
 # 确认 .env 或全局 providers 中有对应 key
 
-# ✅ 正确：api_key 通过全局 providers: 块内嵌管理
+# ✅ 正确：api_key 统一走 .env 的 ZAI_CODING_API_KEY，providers: 块里写模板引用
 # model:
 #   default: glm-5.3-flash
 #   provider: hp-zai
@@ -1279,7 +1292,7 @@ providers:
   hp-zai:                      # key = 引用 ID；显示名 name: zai-coding
     name: zai-coding
     api: https://open.bigmodel.cn/api/coding/paas/v4
-    api_key: <内嵌，勿留空>
+    api_key: ${ZAI_CODING_API_KEY}      # 模板引用，真值在 .env；轮换只改 .env + 重启
     transport: chat_completions
     default_model: glm-5.3-flash
 model:
@@ -1290,7 +1303,7 @@ model:
 
 统一时的注意点：
 - 改名条目后，config.yaml 里所有 `provider: custom:<旧名>` 引用要同步改（如 genshin 有 model 块 + auxiliary 等多处）
-- `.env` 的 `ZAI_API_KEY`/`GLM_API_KEY` 属于已弃用的内置 zai 遗留；hp-zai 的 key 内嵌在 providers 块，不再走 .env
+- hp-zai 的 key 统一存 `.env` 的 `ZAI_CODING_API_KEY`（default + 各 profile 四份同名变量），config 内为 `${ZAI_CODING_API_KEY}` 模板引用；`ZAI_API_KEY`/`GLM_API_KEY` 属于已弃用内置 zai 的专属名，勿复用
 - 向导添加自定义端点时默认条目名叫 `custom`，配置完记得改名
 - 改完必须逐 profile 重启 gateway + chat 测试验证
 
@@ -1300,7 +1313,7 @@ model:
 
 引用写了不存在的 key（例如把显示名 `zai-coding` 当 provider 用）**不会立刻报错**：节内显式 `base_url` 加 env 兜底会续命（辅助/delegation 的 key env 按 id 推导：`HERMES_<ID大写,-→_>_API_KEY`，如 `HERMES_ZAI_CODING_API_KEY`）。这是隐患不是正确写法——排查时按解析链核对，不要被"服务正常"迷惑。
 
-删除与内置 provider 同名的自定义条目（如 `zai`）后，所有裸引用**静默漂移到内置官方 provider**（env `ZAI_API_KEY`/`GLM_BASE_URL` 兜底），功能可能照常但语义已不是用户保留的那个 provider，必须审计。休眠配置（未激活的 `moa.presets` 等）同样携带旧引用，别只查激活项。完整流程见 `references/provider-ref-audit.md`。
+删除与内置 provider 同名的自定义条目（如 `zai`）后，所有裸引用**静默漂移到内置官方 provider**（env `ZAI_API_KEY`/`GLM_BASE_URL` 兜底），功能可能照常但语义已不是用户保留的那个 provider，必须审计。休眠配置（未激活的 `moa.presets` 等）同样携带旧引用，别只查激活项。审计要同时扫**字面量**和 **`${旧变量}` 模板引用**：改密钥存储/换变量名/删 env 后，只 grep 旧 key 明文会漏掉 `model.api_key`、providers 块、各 auxiliary 节里的 `${OLD_VAR}`——且各 profile 的 auxiliary 子集不一致，必须逐 profile 全树遍历 YAML，不能假设键位相同。完整流程见 `references/provider-ref-audit.md`。
 
 ### ⚠️ 边界条件 4：.env 中有同名 key 时取最后一个
 
@@ -1317,7 +1330,7 @@ model:
 5. **自定义 Provider 需要 base_url**：使用自定义 provider 时必须在 `config set` 中指定 `base_url`
 6. **profile 名称区分大小写**：`Profile` ≠ `profile`，使用 `hermes profile list` 确认准确名称
 7. **default profile 不加 -p**：对 default profile 操作时不加 `-p` 参数，这是最常见的错误
-8. **不能从 Gateway 进程内部重启自身**：`hermes gateway restart` / `hermes -p <name> gateway restart` 从 Gateway 内部的 terminal 执行会被阻止（SIGTERM 会传播杀死自身）。如需重启，使用 `systemctl restart hermes-gateway.service` 或从外部 shell 执行
+8. **不能从 Gateway 进程内部重启自身**：`hermes gateway restart` / `hermes -p <name> gateway restart` 从 Gateway 内部的 terminal 执行会被阻止（SIGTERM 会传播杀死自身）。如需重启，用 systemd 一次性定时器延迟触发（见 §11 的 systemd-run 模式），让当前回合先完成
 
 ---
 
@@ -1335,6 +1348,13 @@ done
 ```
 
 **建议：** 在 cron job 或 `hermes update` 后自动重启所有 gateway，避免假性错误。
+
+**Agent 自身宿主在 gateway 里时：不要同步重启**——SIGTERM 会杀死自己的会话，报告半途丢失。用 systemd 一次性定时器延迟触发，把「重启 → 等 active → 逐 profile chat 实测」打包成一个脚本写日志到文件：
+```bash
+# 脚本以独立 systemd 单元运行，不在 gateway cgroup 内，能穿越重启继续跑完验证
+systemd-run --unit=gw-restart-verify --on-active=70s /bin/bash /path/restart_verify.sh
+# 之后读日志文件汇报结果；定时器用完即消失，不留常驻
+```
 
 ---
 

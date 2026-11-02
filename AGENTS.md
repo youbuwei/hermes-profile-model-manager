@@ -2,14 +2,14 @@
 
 ## Project Overview
 
-**Hermes Profile Model Manager** (v3.5.1) — a Hermes Agent skill for viewing, switching, and managing LLM model configurations across all Hermes profiles. Covers main model, auxiliary models (vision, compression, web_extract, session_search), and delegation models. Supports single-profile and batch operations, provider switching, and endpoint management via unified custom provider key hp-zai (Vision legacy models → direct endpoint, all others → coding plan endpoint).
+**Hermes Profile Model Manager** (v3.6.0) — a Hermes Agent skill for viewing, switching, and managing LLM model configurations across all Hermes profiles. Covers main model, auxiliary models (vision, compression, web_extract, session_search), and delegation models. Supports single-profile and batch operations, provider switching, and endpoint management via unified custom provider key hp-zai (Vision legacy models → direct endpoint, all others → coding plan endpoint).
 
 This is a **skill package**, not a compiled application. It ships as a `SKILL.md` consumed by the Hermes runtime plus a companion shell script.
 
 ## Architecture & Data Flow
 
 ```
-SKILL.md (v3.5.1)                          # Skill definition + full user-facing docs
+SKILL.md (v3.6.0)                          # Skill definition + full user-facing docs
   ├─ §Agent: 智能触发指引                   # Intent → keyword mapping for auto-trigger
   ├─ §0: 快速开始
   ├─ §1-3: 配置架构 / 查看 / 切换            # Core operations

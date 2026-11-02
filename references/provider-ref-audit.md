@@ -12,6 +12,7 @@
 - 生效范围：主 `config.yaml` + `profiles/*/config.yaml` + `cron/jobs.json` + 各 `auth.json` + `scripts/` + 技能文档。
 - `sessions/`、`logs/` 是历史记录，排除；`backups/` 不算生效引用但可取证（确认删除前存在哪些 provider key、引用当时指向谁）。
 - 全库扫会命中海量会话噪音，先 count 摸底再定向，输出打码 api_key。
+- **模板引用也要扫**：config 值支持 `${VAR}` env 插值（如 `api_key: ${ZAI_CODING_API_KEY}`）。换密钥变量名/删 env 后，只 grep 旧 key 明文会漏掉模板引用；且各 profile 的 auxiliary 子集不一致，逐 profile 全树遍历 YAML 确认键位，不要假设各 profile 键位相同。
 
 ## 第 2 步：追解析链（"没报错" ≠ "没漂移"）
 对每处命中核对实际解析路径：
@@ -27,6 +28,7 @@
 修改建议给 `hermes config set` 命令或 yaml 行级清单，**等用户确认后由用户手动改**（SKILL.md 边界条件 7）。改完后全量复查：所有 `provider:` 引用与 `providers:` key 一一对应。
 
 ## 本环境现状（provider 整理后约定）
-- 智谱 coding plan 自定义 provider：**key=`hp-zai`，显示名=`zai-coding`**，api=`https://open.bigmodel.cn/api/coding/paas/v4`；主 config + diary/genshin/qian-duoduo 四份定义一致，api_key 内嵌各 config。
-- 裸 `zai` = 内置官方 provider，靠全局 `.env` 的 `ZAI_API_KEY`（key）+ `GLM_BASE_URL`（base_url，当前指向 coding 端）兜底；三个 profile 的 `.env` 各有 `ZAI_API_KEY`（genshin 另有 `GLM_API_KEY`）。
-- 典型漂移点：3 个 profile 的 auxiliary.web_extract / session_search 曾用裸 `zai`；主 config delegation 与各 profile memory flush 曾用显示名 `zai-coding`。审计时优先核对这些位置。
+- 智谱 coding plan 自定义 provider：**key=`hp-zai`，显示名=`zai-coding`**，api=`https://open.bigmodel.cn/api/coding/paas/v4`；主 config + diary/genshin/qian-duoduo 四份定义一致。
+- key 值存 `.env` 的 **`ZAI_CODING_API_KEY`**（default + 三 profile 四份同名变量），config 内全部为 `${ZAI_CODING_API_KEY}` 模板引用（`model.api_key`、`providers.hp-zai.api_key`、各 auxiliary 节 `api_key`）；轮换 = 改 .env + 重启，不动 config。
+- 裸 `zai` = 内置官方 provider，已弃用：其专属 env `ZAI_API_KEY`/`GLM_API_KEY`/`GLM_BASE_URL` 已全部清除（含各 profile），`auth.json` 的 `zai`/`custom:zai` 记录已清。
+- 典型漂移点（均已修复；审计同类问题时优先核对这些位置）：auxiliary.web_extract / session_search 的 `provider:`、主 config delegation 与各 profile memory flush 的 `provider:`、以及全配置所有 `api_key` 的模板变量名。
