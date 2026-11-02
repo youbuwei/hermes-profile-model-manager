@@ -1,7 +1,7 @@
 ---
 name: profile-model-manager
 description: "查看、更换和管理 Hermes 各 profile 的大模型配置（主模型、辅助模型、delegation 模型）。支持单个/批量操作、切换 provider、全 profile 一览。"
-version: 3.1.0
+version: 3.5.1
 author: 贾维斯
 metadata:
   hermes:
@@ -15,6 +15,26 @@ metadata:
 
 > **适用场景：** 需要查看或切换 Hermes 各 profile 的大模型时使用本 skill。
 > **不适用场景：** 安装新 provider、配置 API Key（参见 `hermes-agent` skill）；管理 MCP 模型（参见 `native-mcp` skill）。
+
+---
+
+## ⛔ 命名铁律：内置 `zai` ≠ 自定义 provider（先读这个）
+
+**为什么有这一节（2026-11-02 提督明确指示写明白）：** 本环境曾把自定义 provider 也命名为 `zai`，与 Hermes **内置** `zai` 同名——一个名字、两个身份，极易误解：
+
+| | 内置 `zai`（官方） | 自定义 `zai`（已删） |
+|---|---|---|
+| 来源 | Hermes 内置注册表 | 曾定义于 `providers.zai`，2026-11-02 删除 |
+| 端点 | 自动探测 / `GLM_BASE_URL` env，默认可能落到 `api.z.ai` 全球直连 | 显式 coding plan 端 |
+| key | `ZAI_API_KEY` / `GLM_API_KEY` env | 曾内嵌 config |
+| 现状 | **本环境已弃用**（相关 env 已于 2026-11-02 清除） | 由 key=`hp-zai`（显示名 zai-coding）接替 |
+
+同名的历史教训（本次重构的起因）：自定义条目一删，所有裸引用 `provider: zai` **静默漂移**到内置 zai——靠 env 兑底表面还能跑，但语义已完全不是用户保留的那个 provider。审计过程见边界条件 10 与 `references/provider-ref-audit.md`。
+
+**铁律（Agent 必须遵守）：**
+1. 智谱一律写 `provider: hp-zai`（key）。写 `zai` 会命中已弃用的内置官方；写 `zai-coding` 是显示名、不是 key，只是靠 env 兑底暂时能跑的隐患写法。
+2. **新建自定义 provider 禁止与任何内置 provider 同名**（zai、xiaomi、openrouter、deepseek…），必须取不冲突的 key——这就是 hp-zai 这个"怪名字"的由来：为区分而故意不叫 zai。
+3. 看到旧教程/外部文档说 `provider zai`，一律理解为 `hp-zai`（本文档旧示例已全部同步）。
 
 ---
 
@@ -62,8 +82,9 @@ metadata:
 ### ⚠️ Agent 必须遵守的规则
 
 1. **切换操作必须包含完整链路**：检查 key → set model → set provider → set base_url → restart → 验证。不能只做其中一步。
-2. **Z.AI vs zai base_url 选择**：切换到智谱模型时，**必须根据模型用途选择正确的 base_url**，不能一律设为 coding plan：
-   - **Vision（glm-4.6v）** → base_url = `https://open.bigmodel.cn/api/paas/v4`（Z.AI 直连端）
+**⚠️ Z.AI vs zai base_url 选择**：切换到智谱模型时，**必须根据模型选择正确的 base_url**，不能一律设为 coding plan：
+   - **Vision（glm-4.6v）** → base_url = `https://open.bigmodel.cn/api/paas/v4`（Z.AI 直连端，旧版模型不支持 CP 端多模态）
+   - **Vision（glm-5.3-flash 等）** → base_url = `https://open.bigmodel.cn/api/coding/paas/v4`（zai coding plan 端，2026-08-27 已验证支持多模态）
    - **其余所有模型**（主模型/Compression/WebExtract/SessionSearch/Delegation） → base_url = `https://open.bigmodel.cn/api/coding/paas/v4`（zai coding plan 端）
 3. **切换后必须验证**：不能改完配置就结束，必须 `config show` 确认写入成功 + `gateway restart` 确认重启。
 4. **缺 key 时主动阻止**：发现目标 provider 的 API Key 不存在时，不要盲目继续，应告知用户并提供添加 key 的命令。
@@ -99,7 +120,7 @@ bash ~/.hermes/scripts/profile-model-overview.sh --diagnose
 ```bash
 # 2. 切换 default profile 主模型（必须显式设 base_url）
 hermes config set model.default glm-5-turbo
-hermes config set model.provider zai
+hermes config set model.provider hp-zai
 hermes config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
 
 # 3. 重启生效
@@ -238,7 +259,7 @@ hermes -p <profile> config set model.base_url <base_url>
 $ hermes -p reasoner config set model.default glm-5.1
 ✅ Set model.default = glm-5.1
 
-$ hermes -p reasoner config set model.provider zai
+$ hermes -p reasoner config set model.provider hp-zai
 ✅ Set model.provider = zai
 
 $ hermes -p reasoner config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
@@ -260,28 +281,37 @@ $ hermes -p reasoner gateway restart
 ### 3.2 切换辅助模型
 
 ```bash
-# Vision → Z.AI 直连端（⚠️ glm-4.6v 是唯一多模态模型，必须走直连端 /api/paas/v4）
-hermes config set auxiliary.vision.provider zai
+# Vision → 根据模型版本选择端点
+# glm-4.6v（旧版）→ Z.AI 直连端（coding plan 端不支持其多模态输入）
+hermes config set auxiliary.vision.provider hp-zai
 hermes config set auxiliary.vision.model glm-4.6v
 hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/paas/v4
 
+# glm-5.3-flash（新版）→ zai coding plan 端（2026-08-27 已验证支持多模态）
+hermes config set auxiliary.vision.provider hp-zai
+hermes config set auxiliary.vision.model glm-5.3-flash
+hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/coding/paas/v4
+
 # 其余辅助模型 → zai coding plan 端（⚠️ 不是直连端！是 /api/coding/paas/v4）
-hermes config set auxiliary.compression.provider zai
+hermes config set auxiliary.compression.provider hp-zai
 hermes config set auxiliary.compression.model glm-4.5-air
 hermes config set auxiliary.compression.base_url https://open.bigmodel.cn/api/coding/paas/v4
 
-hermes config set auxiliary.web_extract.provider zai
+hermes config set auxiliary.web_extract.provider hp-zai
 hermes config set auxiliary.web_extract.model glm-4.5-air
 hermes config set auxiliary.web_extract.base_url https://open.bigmodel.cn/api/coding/paas/v4
 
-hermes config set auxiliary.session_search.provider zai
+hermes config set auxiliary.session_search.provider hp-zai
 hermes config set auxiliary.session_search.model glm-4.5-air
 hermes config set auxiliary.session_search.base_url https://open.bigmodel.cn/api/coding/paas/v4
 ```
 
-> **为什么 Vision 走直连而其余走 coding plan？**
-> - glm-4.6v 是多模态视觉模型，Coding Plan 端（`/api/coding/paas/v4`）不支持多模态输入，只有直连端（`/api/paas/v4`）支持图片传入
+> **为什么 Vision 选择不同端点？**
+> - **glm-4.6v**：旧版多模态模型，Coding Plan 端不支持其多模态输入，必须走直连端（`/api/paas/v4`）
+> - **glm-5.3-flash**（2026-08-27 验证）：原生多模态模型，Coding Plan 端已支持图片传入，走 Coding Plan 端（`/api/coding/paas/v4`），享受 3 倍积分和闲时半价
 > - 其余辅助模型（compression/web_extract/session_search）是纯文本模型，走 Coding Plan 端更便宜且不影响并发
+>
+> **Vision 端点选择规则（2026-08-27 更新）：** 新版多模态模型（如 glm-5.3-flash）可走 Coding Plan 端；旧版视觉模型（如 glm-4.6v）仍需走 Z.AI 直连端。选择前需验证目标模型在 Coding Plan 端是否支持多模态输入。
 
 Per-profile 用法同理加 `-p <name>`。
 
@@ -289,7 +319,7 @@ Per-profile 用法同理加 `-p <name>`。
 
 ```bash
 hermes -p <profile> config set delegation.model <model>
-hermes -p <profile> config set delegation.provider zai
+hermes -p <profile> config set delegation.provider hp-zai
 hermes -p <profile> config set delegation.base_url https://open.bigmodel.cn/api/coding/paas/v4
 ```
 
@@ -306,11 +336,11 @@ hermes -p <profile> config set delegation.provider ""
 for p in default cto diary genshin reasoner scout qian-duoduo; do
   if [ "$p" = "default" ]; then
     hermes config set model.default glm-5-turbo
-    hermes config set model.provider zai
+    hermes config set model.provider hp-zai
     hermes config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
   else
     hermes -p "$p" config set model.default glm-5-turbo
-    hermes -p "$p" config set model.provider zai
+    hermes -p "$p" config set model.provider hp-zai
     hermes -p "$p" config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
   fi
 done
@@ -339,6 +369,14 @@ hermes -p <profile> config show | grep "default:" -A1
 # 方法 2：发送测试消息确认模型实际响应
 hermes -p <profile> chat -q "你是什么模型？回答模型名称即可" -Q
 
+# 方法 2.5（最权威）：直连端点看响应 model 字段。模型自述身份不可靠（会幻觉），
+# 且服务端别名映射（见 §5）会让配置名和真身不一致，只有响应的 model 字段是真相
+KEY=$(python3 -c "import yaml,os; print(yaml.safe_load(open(os.path.expanduser('~/.hermes/config.yaml')))['providers']['hp-zai']['api_key'])")
+curl -s --max-time 30 https://open.bigmodel.cn/api/coding/paas/v4/chat/completions \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model":"<配置的模型名>","messages":[{"role":"user","content":"hi"}],"max_tokens":5}' \
+  | python3 -c "import json,sys; print('真身:', json.load(sys.stdin).get('model'))"
+
 # 方法 3：确认 Gateway 状态
 hermes -p <profile> gateway status
 
@@ -355,21 +393,20 @@ hermes -p <profile> gateway status
 | Provider | Env 变量 | Base URL | 说明 |
 |---|---|---|---|
 | `xiaomi` | `XIAOMI_API_KEY` | `https://token-plan-cn.xiaomimimo.com/v1` | 小米 MiMo |
-| **`zai`** | `GLM_API_KEY` | `https://open.bigmodel.cn/api/coding/paas/v4` | **zai = Coding Plan 端** — 主模型、Compression、WebExtract、SessionSearch、Delegation 全部用此端 |
-| **`Z.AI`** | `GLM_API_KEY` | `https://open.bigmodel.cn/api/paas/v4` | **Z.AI = 直连端** — **仅 Vision（glm-4.6v）使用**，其他模型禁止走此端 |
+| **`hp-zai`**（自定义，显示名 zai-coding） | 内嵌于 4 份 config 的 `providers.hp-zai.api_key` | `https://open.bigmodel.cn/api/coding/paas/v4` | **主力 provider（2026-11-02 起唯一智谱入口）** — 主模型、Compression、WebExtract、SessionSearch、Delegation 全部走此端 |
+| （内置）`zai`/`Z.AI` | `ZAI_API_KEY`/`GLM_API_KEY` | 探测或 `GLM_BASE_URL` | **内置官方 provider，本环境已弃用**：env 计划清除，勿再把引用指向它；直连端知识仅旧版 Vision（glm-4.6v）场景需要 |
 
-**⚠️ Z.AI vs zai 核心规则（2026-06-22 确立，Agent 切换模型时必须遵守）：**
+**规则（2026-06-22 确立，2026-08-27 更新 Vision 端点规则，Agent 切换模型时必须遵守）：**
 
-这两个名称指向**同一个 Env 变量** `GLM_API_KEY`，但 **base_url 完全不同**，Agent 切换模型时**必须根据模型用途选择正确的端点**，不能统一设为 coding plan：
+Provider 一律写 key `hp-zai`（显示名 `zai-coding` 不是引用 ID）。端点选择规则只影响 Vision：
 
-| 用途 | Provider 名 | base_url | 命名 |
+| 用途 | Provider key | base_url | 命名 |
 |---|---|---|---|
-| **主模型**（对话/推理） | `zai` | `https://open.bigmodel.cn/api/coding/paas/v4` | zai Coding Plan 端 |
-| **Vision**（glm-4.6v，唯一多模态） | `zai` | `https://open.bigmodel.cn/api/paas/v4` | **Z.AI 直连端** |
-| **Compression / WebExtract / SessionSearch** | `zai` | `https://open.bigmodel.cn/api/coding/paas/v4` | zai Coding Plan 端 |
-| **Delegation** | `zai` | `https://open.bigmodel.cn/api/coding/paas/v4` | zai Coding Plan 端 |
+| **主模型 / Compression / WebExtract / SessionSearch / Delegation** | `hp-zai` | `https://open.bigmodel.cn/api/coding/paas/v4` | Coding Plan 端 |
+| **Vision（glm-4.6v，旧版）** | `hp-zai` | `https://open.bigmodel.cn/api/paas/v4` | Z.AI 直连端 |
+| **Vision（glm-5.3-flash 等，新版）** | `hp-zai` | `https://open.bigmodel.cn/api/coding/paas/v4` | Coding Plan 端 |
 
-**一句话口诀：Vision 走 Z.AI 直连，其余全走 zai coding plan。**
+**口诀（2026-11-02 更新）：provider 一律 `hp-zai`；旧版视觉（glm-4.6v）节内 base_url 走直连端，其余（含新版视觉）全走 Coding Plan 端。判断依据：该视觉模型在 Coding Plan 端是否已验证支持多模态输入。**
 
 - `config.yaml` 中 `base_url` 必须显式指定，不能留空让 Hermes 自动探测（内置默认 `api.z.ai` 是全球直连端，会导致非 Vision 模型走错端）
 | `openrouter` | `OPENROUTER_API_KEY` | — | OpenRouter |
@@ -383,19 +420,21 @@ hermes -p <profile> gateway status
 | `minimax` | `MINIMAX_API_KEY` | — | MiniMax |
 | `alibaba` | `DASHSCOPE_API_KEY` | — | 阿里 DashScope |
 
-**自定义 Provider** 在 `config.yaml` 的 `custom_providers:` 中定义：
+**自定义 Provider** 在 `config.yaml` 的 `providers:` 块中定义（key = 引用 ID，`name:` = 显示名，二者是同一个 provider）：
 ```yaml
-custom_providers:
-- name: zai
-  base_url: https://open.bigmodel.cn/api/coding/paas/v4
-  api_key: xxx
-  api_mode: chat_completions
+providers:
+  hp-zai:                        # key = 引用 ID，config set *.provider 写这个
+    name: zai-coding             # 显示名，≠ 引用 ID
+    api: https://open.bigmodel.cn/api/coding/paas/v4
+    api_key: <内嵌，勿留空>
+    transport: chat_completions
+    default_model: glm-5.3-flash
 ```
 
 **⚠️ Base URL 规则：**
 - 内置 provider（xiaomi/zai/openrouter 等）：`base_url` 可省略，Hermes 自动填充
 - **Z.AI 有 4 个端点**（见 `hermes-gateway-api-key-debug` → `references/zai-endpoint-architecture.md`）：Coding Plan 端（`/api/coding/paas/v4`）支持 glm-5.1/glm-4.7 等新模型；直连端（`/api/paas/v4`）只支持 glm-5 及标准模型。国内用户应选 `open.bigmodel.cn` 而非 `api.z.ai`。**建议始终显式指定 base_url**，避免自动探测选错端点或区域。
-- **⚠️ Z.AI 解析优先级陷阱：** `config.yaml` 中 `providers.zai.api` 只是**兜底值**，不是权威覆盖。优先级为：`GLM_BASE_URL` 环境变量 > `auth.json` 缓存 > 探测结果 > `providers.zai.api`。要确保一致性，最可靠的做法是设置环境变量 `GLM_BASE_URL=<desired_url>`。详见 `hermes-gateway-api-key-debug` → `references/zai-endpoint-architecture.md` § "Base URL Resolution Priority Chain"。
+- **⚠️ 内置 zai 的解析优先级陷阱（仅内置 provider；自定义 hp-zai 无此问题，其 `providers.hp-zai.api` 即权威端点）：** 内置 `zai` 的解析优先级为 `GLM_BASE_URL` 环境变量 > `auth.json` 缓存 > 探测结果 > `providers.zai.api`（兑底）。详见 `hermes-gateway-api-key-debug` → `references/zai-endpoint-architecture.md` § "Base URL Resolution Priority Chain"。
 - 自定义 provider：`base_url` **必须**显式指定，否则报错
 - 切换 provider 时如果两个 provider 的 `base_url` 不同，**必须同时设置** `base_url`
 
@@ -411,10 +450,15 @@ custom_providers:
 | `glm-5` | 200K | 128K | 通用推理 |
 | `glm-5.1` | 200K | 128K | 复杂推理 |
 | `glm-4.7` | 200K | 128K | 旧版主力 |
-| `glm-4.6v` | 128K | — | **Vision 专用**（唯一多模态） |
+| `glm-4.6v` | 128K | — | **Vision 专用**（旧版，需走 Z.AI 直连端） |
+| `glm-5.3-flash` | 1M | — | **Vision 可用**（新版原生多模态，可走 CP 端，需关闭 thinking） |
 | `glm-4.5-air` | 128K | — | **辅助模型首选**（compression/web_extract，轻量不抢并发） |
 
-推荐搭配：主模型 glm-5-turbo + Vision glm-4.6v + 辅助(glm-4.5-air)
+**⚠️ Coding Plan 端的模型别名映射（官方文档+实测双确认）：** Coding Plan 端点实际只服务 `glm-5.3` 和 `glm-5.3-flash` 两个真身；其余模型名是服务端别名，请求被静默映射：`glm-5-turbo`、`glm-4.7` → `glm-5.3-flash`；`glm-5.2`、`glm-5.1` → `glm-5.3`。无效模型名报 1211「模型不存在」，服务端不做兜底替换。计费按映射后真身的系数走。想要某名字的"真身"只能走标准 API 端点（`/api/paas/v4`）按量计费。因此"配置里写的模型名 ≠ 实际对话的模型"，切换前用 §3.6 方法 2.5 的 curl 确认真身。文档：docs.bigmodel.cn/cn/coding-plan/overview「可用模型」节。
+
+推荐搭配：主模型 glm-5-turbo + Vision glm-4.6v + 辅助(glm-4.5-air) + Compression(glm-5-turbo)
+
+**⚠️ Compression 特殊选型：** Compression 模型需要较强的摘要理解能力，不适合用轻量模型（glm-4.5-air）。当前使用 `glm-5-turbo`，与其余辅助模型不同。
 
 文档：https://docs.bigmodel.cn/cn/guide/start/model-overview
 
@@ -450,7 +494,7 @@ custom_providers:
 ```bash
 # 切到测试模型
 hermes -p reasoner config set model.default glm-5.1
-hermes -p reasoner config set model.provider zai
+hermes -p reasoner config set model.provider hp-zai
 hermes -p reasoner config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
 hermes -p reasoner gateway restart
 
@@ -482,11 +526,11 @@ hermes -p reasoner config show | grep "default:" -A1
 for p in default cto diary genshin reasoner scout qian-duoduo; do
   if [ "$p" = "default" ]; then
     hermes config set model.default glm-5-turbo
-    hermes config set model.provider zai
+    hermes config set model.provider hp-zai
     hermes config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
   else
     hermes -p "$p" config set model.default glm-5-turbo
-    hermes -p "$p" config set model.provider zai
+    hermes -p "$p" config set model.provider hp-zai
     hermes -p "$p" config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
   fi
 done
@@ -505,18 +549,19 @@ bash ~/.hermes/scripts/profile-model-overview.sh
 
 ```bash
 # 换 Vision 模型（主模型不变）
-# ⚠️ Vision 必须用 Z.AI 直连端（/api/paas/v4），不能用 coding plan 端！
-# 原因：glm-4.6v 是多模态模型，coding plan 端不支持图片输入
-hermes config set auxiliary.vision.provider zai
-hermes config set auxiliary.vision.model glm-4.6v
-hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/paas/v4
+# ⚠️ Vision 端点取决于模型版本：
+#   glm-4.6v（旧版）→ 必须走 Z.AI 直连端（/api/paas/v4）
+#   glm-5.3-flash（新版）→ 可走 zai coding plan 端（/api/coding/paas/v4），已验证支持多模态
+hermes config set auxiliary.vision.provider hp-zai
+hermes config set auxiliary.vision.model glm-5.3-flash
+hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/coding/paas/v4
 hermes gateway restart
 
 # ✅ 验证
 hermes config show | grep -A4 "vision:"
 # 预期输出：
 #   vision:
-#     provider: zai
+#     provider: hp-zai
 #     model: glm-4.6v
 #     base_url: https://open.bigmodel.cn/api/paas/v4  ← 必须是直连端
 ```
@@ -527,7 +572,7 @@ hermes config show | grep -A4 "vision:"
 # delegation 用轻量模型，主模型保持强模型
 # ⚠️ Delegation 必须用 coding plan 端（zai），不能留空
 hermes config set delegation.model glm-4.5-air
-hermes config set delegation.provider zai
+hermes config set delegation.provider hp-zai
 hermes config set delegation.base_url https://open.bigmodel.cn/api/coding/paas/v4
 hermes gateway restart
 
@@ -565,18 +610,18 @@ awk '/^model:/{found=1} found && /^  provider:/{print "provider: "$2; exit}' ~/.
 | `.env` 为空 | .env 未初始化 | 需要添加所有必要的 key |
 | provider 和 key 不匹配 | 切了 provider 但没加 key | 添加对应 key |
 
-**一键修复（以 ZAI 为例）：**
+**一键修复（key 缺失时）：**
 ```bash
-# 添加缺失的 key
-echo "GLM_API_KEY=your_key_here" >> ~/.hermes/profiles/<name>/.env
+# hp-zai 的 key 内嵌在各 profile config.yaml 的 providers.hp-zai.api_key（2026-11-02 起标准形态）
+# 若某 profile 缺失，从主 config 复制 providers: 块；勿写 .env（.env 的 ZAI_API_KEY/GLM_API_KEY 属于已弃用的内置 zai）
 # 重启生效
 hermes -p <name> gateway restart
 ```
 
 **预防检查（切换 provider 前必做）：**
 ```bash
-# 检查目标 profile 是否有目标 provider 的 key
-grep -l "GLM_API_KEY" ~/.hermes/profiles/<name>/.env && echo "✅ 有 ZAI key" || echo "❌ 缺 ZAI key"
+# 检查目标 profile 的 providers.hp-zai.api_key 是否存在且非空
+python3 -c "import yaml,os; p=os.path.expanduser('~/.hermes/profiles/<name>/config.yaml') if '<name>'!='default' else os.path.expanduser('~/.hermes/config.yaml'); k=yaml.safe_load(open(p)).get('providers',{}).get('hp-zai',{}).get('api_key',''); print('✅ 有 hp-zai key' if k else '❌ 缺 hp-zai key')"
 ```
 
 ### 🔴 错误 2：context too small（修复时间：~30 秒）
@@ -800,8 +845,8 @@ echo "=== 3. 快速 API 测试 ==="
 python3 -c "
 import yaml
 cfg = yaml.safe_load(open('$HOME/.hermes/config.yaml'))
-key = cfg['providers'].get('zai',{}).get('api_key','')
-print(f'全局 zai key: {key[:10]}...{key[-4:]} (len={len(key)})')
+key = cfg['providers'].get('hp-zai',{}).get('api_key','')
+print(f'全局 hp-zai key: {key[:10]}...{key[-4:]} (len={len(key)})')
 "
 ```
 
@@ -810,7 +855,7 @@ print(f'全局 zai key: {key[:10]}...{key[-4:]} (len={len(key)})')
 |---|---|---|
 | .env 中 ZAI_API_KEY 长度 < 30 | key 被截断为掩码值 | 用全局 provider 中的真实 key 替换 |
 | config.yaml 中有 `api_key: tp-cb1...` | xiaomi token 硬编码在 zai provider 配置中 | 删除 `api_key`、`base_url`、`api_mode`，只保留 `model` + `provider` |
-| 两处都正常 | 可能是全局 provider key 真的过期了 | 检查全局 `config.yaml` 中 `providers.zai.api_key` |
+| 两处都正常 | 可能是全局 provider key 真的过期了 | 检查全局 `config.yaml` 中 `providers.hp-zai.api_key` |
 
 **一键修复（根因 1 — .env 截断）：**
 ```bash
@@ -869,7 +914,7 @@ hermes -p <profile> gateway logs --tail 50 2>&1 | grep -i "stale\|RemoteProtocol
 **修复：** 如果频繁出现，切换到备用 provider：
 ```bash
 # 示例：从 xiaomi 切到 zai
-hermes -p <profile> config set model.provider zai
+hermes -p <profile> config set model.provider hp-zai
 hermes -p <profile> config set model.default glm-5-turbo
 hermes -p <profile> config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
 hermes -p <profile> gateway restart
@@ -887,13 +932,10 @@ hermes -p <profile> gateway restart
 验证方法：`hermes -p <profile> gateway status` 确认状态为 `running`。
 
 ### Q2: 切换 provider 后报 "no API key found"？
-**A:** 每个 profile 有独立的 `.env` 文件，需要确保目标 profile 的 `.env` 中有对应 key：
+**A:** hp-zai 的 key 内嵌在各 profile 的 `providers.hp-zai.api_key`（2026-11-02 起标准形态）；缺失时从主 config 复制 `providers:` 块。`.env` 的 `ZAI_API_KEY`/`GLM_API_KEY` 属于已弃用的内置 zai：
 ```bash
-# 检查 key 是否存在
-grep "ZAI\|XIAOMI\|DEEPSEEK" ~/.hermes/profiles/<name>/.env
-
-# 如果没有，手动添加
-echo "GLM_API_KEY=your_key_here" >> ~/.hermes/profiles/<name>/.env
+# 检查 key 是否内嵌存在
+python3 -c "import yaml,os; p=os.path.expanduser('~/.hermes/profiles/<name>/config.yaml') if '<name>'!='default' else os.path.expanduser('~/.hermes/config.yaml'); print('✅ 有' if yaml.safe_load(open(p)).get('providers',{}).get('hp-zai',{}).get('api_key') else '❌ 缺')"
 ```
 
 ### Q3: 辅助模型设为空会怎样？
@@ -933,7 +975,7 @@ hermes -p <profile> gateway restart
 ### Q9: 自定义 provider 和内置 provider 的区别？
 **A:**
 - **内置 provider**（xiaomi/zai/openrouter 等）：`base_url` 和 `api_key` 的 env 变量名由 Hermes 自动识别，只需设置 `provider` 名即可
-- **自定义 provider**：在 `custom_providers` 中定义，切换时必须同时设置 `base_url`
+- **自定义 provider**：在 `providers:` 块中定义（key = 引用 ID），切换时必须同时设置 `base_url`
 
 ### Q10: Gateway restart 和 start 的区别？
 **A:**
@@ -945,7 +987,7 @@ hermes -p <profile> gateway restart
 **A:** 这是上游模型 API 服务端的问题（模型服务卡住，没有返回任何数据）。Hermes 会自动重试 3 次。如果频繁出现，建议切换到备用 provider：
 ```bash
 # 快速切换到备用 provider
-hermes -p <profile> config set model.provider zai
+hermes -p <profile> config set model.provider hp-zai
 hermes -p <profile> config set model.default glm-5-turbo
 hermes -p <profile> config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
 hermes -p <profile> gateway restart
@@ -973,7 +1015,25 @@ done
 ### Q15: 401 "token expired or incorrect" 但 key 明明没过期？
 **A:** 两种常见原因：① profile `.env` 中的 API Key 被截断成了掩码值（如 `3541b5...vBc2`，仅 13 字符），检查 `grep "_API_KEY" ~/.hermes/profiles/<name>/.env` 看长度是否异常短；② `config.yaml` 硬编码了错误 provider 的 key（如 xiaomi 的 token 放在 zai provider 下）。修复见 §7 错误 9。
 
-### Q14: 如何快速诊断任意模型问题？
+### Q14: 辅助模型选择器里看不到某个 provider（如 zai）？
+**A:** 这是一个已知的 CLI 限制，**不是你的配置问题**。
+
+**根因：** CLI 的 `_aux_select_for_task()` 函数（`hermes_cli/main.py:3406`）调用 `list_authenticated_providers()` 时**没有传 `user_providers` 参数**。`list_authenticated_providers()` 内部分 4 个 section 扫描 provider，其中 Section 3 专门处理 `config.yaml` 中 `providers:` 块定义的自定义端点——没有 `user_providers` 参数就跳过了 Section 3。所以你在 `config.yaml` 的 `providers:` 里定义的自定义 provider 不会出现在辅助模型的 picker 列表里。
+
+**内置 `zai` 和自定义 `hp-zai` 是两个东西（2026-11-02 起只用后者）：**
+- **内置 Z.AI**（`PROVIDER_REGISTRY` 注册，slug=`zai`）：靠 `ZAI_API_KEY`/`GLM_API_KEY` 环境变量触发，在 Section 1 被 `list_authenticated_providers()` 发现，**会出现在辅助 picker 中**（但用内置默认端点，不是你自定义的 coding 端口）
+- **自定义 `hp-zai`**（`config.yaml` 的 `providers.hp-zai:` 块）：靠 Section 3 发现，但辅助 picker 不调用 Section 3，**不会出现在辅助 picker 中**
+
+如果你的环境变量里有 `ZAI_API_KEY`，内置 Z.AI 会出现在 picker 中（slug 为 `zai`），但它用的是内置默认端点（`api.z.ai` 全球直连），不是你在 `providers.hp-zai.api` 里配的 coding 端口。选了它之后 base_url 不对，还得手动改。
+
+**替代方案（推荐，直接命令行设置，100% 可靠）：**
+```bash
+hermes config set auxiliary.<task>.provider hp-zai
+hermes config set auxiliary.<task>.model glm-4.5-air
+hermes config set auxiliary.<task>.base_url https://open.bigmodel.cn/api/coding/paas/v4
+```
+
+### Q15: 如何快速诊断任意模型问题？
 **A:** 使用一键诊断脚本：
 ```bash
 PROFILE="<name>"  # ← 替换
@@ -1003,20 +1063,26 @@ hermes config set model.default glm-5.1
 
 # ✅ 正确：同时切换（必须设 base_url）
 hermes config set model.default glm-5.1
-hermes config set model.provider zai
+hermes config set model.provider hp-zai
 hermes config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
 ```
 
-### ❌ 反模式 1.5：不区分 Z.AI 和 zai，一律用 coding plan 端
+### ❌ 反模式 1.5：不区分模型版本，Vision 端点选错
 
 ```bash
-# ❌ 错误：Vision 也设成了 coding plan 端 → glm-4.6v 不支持多模态输入
+# ❌ 错误：glm-4.6v（旧版）设成 coding plan 端 → 不支持多模态输入
+hermes config set auxiliary.vision.model glm-4.6v
 hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/coding/paas/v4
 
-# ✅ 正确：Vision 必须用直连端（Z.AI）
+# ✅ 正确：glm-4.6v → Z.AI 直连端
+hermes config set auxiliary.vision.model glm-4.6v
 hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/paas/v4
 
-# ❌ 同样错误：把主模型设成了直连端 → 浪费直连端配额，应该走 coding plan
+# ✅ 正确：glm-5.3-flash（新版，已验证）→ coding plan 端，享受 3 倍积分
+hermes config set auxiliary.vision.model glm-5.3-flash
+hermes config set auxiliary.vision.base_url https://open.bigmodel.cn/api/coding/paas/v4
+
+# ❌ 错误：把主模型设成了直连端 → 浪费直连端配额
 hermes config set model.base_url https://open.bigmodel.cn/api/paas/v4
 # ✅ 正确：主模型走 coding plan 端（zai）
 hermes config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
@@ -1026,11 +1092,11 @@ hermes config set model.base_url https://open.bigmodel.cn/api/coding/paas/v4
 
 ```bash
 # ❌ 错误：改了配置就以为生效了
-hermes config set model.provider zai
+hermes config set model.provider hp-zai
 # ...直接发消息 → 仍用旧 provider
 
 # ✅ 正确：改完必须重启
-hermes config set model.provider zai
+hermes config set model.provider hp-zai
 hermes gateway restart
 ```
 
@@ -1038,15 +1104,32 @@ hermes gateway restart
 
 ```bash
 # ❌ 错误：直接切 provider
-hermes -p diary config set model.provider zai
+hermes -p diary config set model.provider hp-zai
 
 # ✅ 正确：先检查 key 存在
 grep "GLM_API_KEY" ~/.hermes/profiles/diary/.env && \
-  hermes -p diary config set model.provider zai || \
+  hermes -p diary config set model.provider hp-zai || \
   echo "❌ 先添加 GLM_API_KEY 到 .env"
 ```
 
-### ❌ 反模式 4：default profile 加了 -p 参数
+### ❌ 反模式 4：在 profile config.yaml model 块中硬编码 api_key
+
+```bash
+# ❌ 错误：model 块里直接写 api_key
+# model:
+#   api_key: <真实key示例已打码 2026-11-02 —— 文档禁止放真实key>
+# 问题：key 无法随全局 provider 更新同步，容易过期后 401；不同 profile 可能写了不同 key
+# 修复：hermes -p <name> config set model.api_key ""
+# 确认 .env 或全局 providers 中有对应 key
+
+# ✅ 正确：api_key 通过全局 providers: 块内嵌管理
+# model:
+#   default: glm-5.3-flash
+#   provider: hp-zai
+#   base_url: https://open.bigmodel.cn/api/coding/paas/v4
+```
+
+### ❌ 反模式 5：default profile 加了 -p 参数
 
 ```bash
 # ❌ 错误
@@ -1094,34 +1177,41 @@ hermes config set auxiliary.compression.model glm-4.5-air
 hermes config set auxiliary.web_extract.model glm-4.5-air
 ```
 
-选型原则：vision 必须用多模态模型（如 glm-4.6v）；compression / web_extract / session_search 用轻量模型即可。
+选型原则：vision 必须用多模态模型（如 glm-4.6v）；compression 用较强模型（当前 glm-5-turbo，需较强摘要能力）；web_extract / session_search 等其余辅助任务用轻量模型即可。
 
-### ⚠️ 边界条件 6：全 profile 批量审计 Z.AI vs zai 端点一致性
+### ⚠️ 边界条件 6：全 profile 批量审计 Z.AI vs zai 端点一致性 + 硬编码 api_key
 
-批量切换 provider 后，不同 profile 可能残留不同的 base_url 配置。验证脚本（`profile-model-overview.sh`）不显示 base_url，所以必须逐 profile 读取 config.yaml 的 `base_url` 字段。
+批量切换 provider 后，不同 profile 可能残留不同的 base_url 配置。验证脚本（`profile-model-overview.sh`）不显示 base_url，所以必须逐 profile 读取 config.yaml 的 `base_url` 字段。同时需检查 model 块是否硬编码了 `api_key`（应通过全局 `providers:` 或 `.env` 管理）。
 
-**规则（2026-06-22 确立）：口诀：Vision 走 Z.AI 直连，其余全走 zai coding plan。**
-- **Vision** → Z.AI 直连端（`https://open.bigmodel.cn/api/paas/v4`）— 因为 glm-4.6v 是唯一多模态模型，coding plan 端不支持图片输入
-- **其余所有模型** → zai coding plan 端（`https://open.bigmodel.cn/api/coding/paas/v4`）
+**规则（2026-06-22 确立，2026-08-27 更新）：按模型版本选端点。model 块不得硬编码 api_key。**
+- **Vision（glm-4.6v 等旧版）** → Z.AI 直连端（`/api/paas/v4`）
+- **Vision（glm-5.3-flash 等新版，已验证）** → zai coding plan 端（`/api/coding/paas/v4`）
+- **其余所有模型** → zai coding plan 端（`/api/coding/paas/v4`）
+
 
 **一键审计脚本（Python）：**
 ```python
 import os, yaml
-profiles = ['default','cto','dev','diary','genshin','ops','pm','qa','qian-duoduo','reasoner','scout','security']
-ZAI_DIRECT = "https://open.bigmodel.cn/api/paas/v4"      # Vision 用
-ZAI_CODING = "https://open.bigmodel.cn/api/coding/paas/v4"  # 其余全部用
+profiles = ['default','diary','genshin','qian-duoduo']  # 现存 profile（2026-11-02）
+ZAI_DIRECT = "https://open.bigmodel.cn/api/paas/v4"      # 旧版 Vision（glm-4.6v）用
+ZAI_CODING = "https://open.bigmodel.cn/api/coding/paas/v4"  # 其余全部用（含新版 Vision 如 glm-5.3-flash）
 for p in profiles:
     cfg_path = os.path.expanduser('~/.hermes/config.yaml') if p == 'default' else os.path.expanduser(f'~/.hermes/profiles/{p}/config.yaml')
     cfg = yaml.safe_load(open(cfg_path))
     model = cfg.get('model', {})
     aux = cfg.get('auxiliary', {})
     deleg = cfg.get('delegation', {})
-    # Vision → 直连
+    # Vision → 根据模型版本选择端点
     vision = aux.get('vision', {})
-    if vision.get('model'):
+    vm = vision.get('model', '')
+    if vm:
         bu = vision.get('base_url', '')
-        status = '✅' if bu == ZAI_DIRECT else '❌'
-        print(f"{status} {p} Vision base_url={bu}")
+        # glm-4.6v 等旧版 → Z.AI 直连端；glm-5.3-flash 等新版 → CP 端
+        if vm in ('glm-4.6v',):
+            status = '✅' if bu == ZAI_DIRECT else '❌'
+        else:
+            status = '✅' if bu == ZAI_CODING else '❌'
+        print(f"{status} {p} Vision model={vm} base_url={bu}")
     # 其余 → coding plan
     for label, sec in [('主模型', model), ('Compression', aux.get('compression',{})),
                        ('WebExtract', aux.get('web_extract',{})),
@@ -1135,9 +1225,39 @@ for p in profiles:
         bu = deleg.get('base_url', '')
         status = '✅' if bu == ZAI_CODING else '❌'
         print(f"{status} {p} Delegation provider={d_prov} base_url={bu}")
+    # 硬编码 api_key 检查（2026-06-28 新增）
+    if model.get('api_key'):
+        print(f"⚠️ {p}: model 块硬编码了 api_key（应清除，改用 providers 或 .env）")
 ```
 
-### ⚠️ 边界条件 7：delegation 设为空字符串 vs 删除字段
+### ⚠️ 边界条件 6.5：批量修改 config.yaml 时禁止用 yaml.dump 回写
+
+**⚠️ 血泪教训（2026-07-24）：** 用 `yaml.dump()` 回写 Hermes config.yaml 会**丢失所有注释、引号风格、空行结构**，可能导致 Hermes 解析异常或行为变化。
+
+**正确做法：** 用 `yaml.safe_load()` 只读解析数据结构（用于查询/验证），但修改文件时用**精确文本替换**（`patch` 工具或 `sed`/`awk`），不要 dump 回写。
+
+**反例（本次会话犯的错误）：** 批量修改辅助模型时用 Python `yaml.dump()` 回写 7 个 config.yaml，虽然值正确但格式被破坏（注释丢失、引号变化）。最终功能不受影响（Hermes 也用 yaml.safe_load），但最佳实践仍是避免 dump 回写。
+
+```python
+# ❌ 错误：dump 回写破坏格式
+import yaml
+with open(path) as f:
+    data = yaml.safe_load(f)
+data['auxiliary']['compression']['model'] = 'glm-5-turbo'
+with open(path, 'w') as f:
+    yaml.dump(data, f, ...)  # 注释全没了！
+
+# ✅ 正确：精确文本替换（sed / patch 工具）
+sed -i '/^  compression:/,/^[^ ]/ s/model: glm-4.5-air/model: glm-5-turbo/' config.yaml
+```
+
+### ⚠️ 边界条件 7：调查配置时不要主动修改（用户曾明确纠正）
+
+当用户询问"为什么 X 配置是这样"时，**只读取和汇报发现，不要主动修改配置**。调查和修复是两个独立动作，必须等用户确认后再操作。特别是涉及 `base_url`、`provider` 等关键配置时，用户的设置可能有意为之（如 vision 故意用不同端点）。
+
+**⚠️ 血泪教训（2026-07-13）：** 用户问"如何配置 zai 的 base_url 为 coding 专属端口"，Agent 发现 vision 的 base_url 与 coding 端口不一致，**未经用户确认就自动修改了**。用户明确说"不要修"，Agent 不得不回滚。**永远不要把"看起来不对"等同于"需要修"。** 如果不是用户明确要求修改，发现差异就汇报差异，让用户决定。
+
+### ⚠️ 边界条件 8：delegation 设为空字符串 vs 删除字段
 
 ```bash
 # 设为空字符串 → 回到继承主模型的行为
@@ -1146,6 +1266,41 @@ hermes config set delegation.model ""
 # 直接编辑 config.yaml 删除 delegation 整块 → 可能导致解析问题
 # ❌ 不推荐直接编辑，用 config set
 ```
+
+### ⚠️ 边界条件 9：profile 配置是孤岛，providers 块不跨 profile 共享（2026-09-04 实测确认）
+
+Profile 的 `config.yaml` 不会继承全局 `~/.hermes/config.yaml` 的 `providers:` 块——`HERMES_HOME` 指向 profile 目录时 `load_config()['providers']` 为空。**"全局定义一次、各 profile 引用"的机制不存在**，每个 profile 都需要自己的 `providers:` 条目（key 是引用 ID、`name:` 只是显示名，见边界条件 10）。
+
+**统一 Provider 定义的标准形态（2026-09-04 已完成 4 profile 统一）：**
+
+```yaml
+# 每个 profile 的 config.yaml（2026-11-02 现行形态：providers: 映射块）
+providers:
+  hp-zai:                      # key = 引用 ID；显示名 name: zai-coding
+    name: zai-coding
+    api: https://open.bigmodel.cn/api/coding/paas/v4
+    api_key: <内嵌，勿留空>
+    transport: chat_completions
+    default_model: glm-5.3-flash
+model:
+  default: glm-5.3-flash
+  provider: hp-zai             # 引用 key，不写显示名
+  base_url: https://open.bigmodel.cn/api/coding/paas/v4
+```
+
+统一时的注意点：
+- 改名条目后，config.yaml 里所有 `provider: custom:<旧名>` 引用要同步改（如 genshin 有 model 块 + auxiliary 等多处）
+- `.env` 的 `ZAI_API_KEY`/`GLM_API_KEY` 属于已弃用的内置 zai 遗留；hp-zai 的 key 内嵌在 providers 块，不再走 .env
+- 向导添加自定义端点时默认条目名叫 `custom`，配置完记得改名
+- 改完必须逐 profile 重启 gateway + chat 测试验证
+
+### ⚠️ 边界条件 10：provider key ≠ 显示名；删除/改名 provider 后必须审计引用漂移（改名动机与命名铁律见文首专节）
+
+`providers:` 块的 **key 是引用 ID**，`name:` 字段只是显示名，两者是同一个 provider。当前环境智谱 coding plan 条目：key = `hp-zai`，显示名 = `zai-coding`（主 config + diary/genshin/qian-duoduo 四份定义一致）。`config set *.provider` 和手写引用**一律写 key，不写显示名**；旧示例中的裸 `zai` 引用已于 2026-11-02 全文同步为 `hp-zai`。
+
+引用写了不存在的 key（例如把显示名 `zai-coding` 当 provider 用）**不会立刻报错**：节内显式 `base_url` 加 env 兜底会续命（辅助/delegation 的 key env 按 id 推导：`HERMES_<ID大写,-→_>_API_KEY`，如 `HERMES_ZAI_CODING_API_KEY`）。这是隐患不是正确写法——排查时按解析链核对，不要被"服务正常"迷惑。
+
+删除与内置 provider 同名的自定义条目（如 `zai`）后，所有裸引用**静默漂移到内置官方 provider**（env `ZAI_API_KEY`/`GLM_BASE_URL` 兜底），功能可能照常但语义已不是用户保留的那个 provider，必须审计。休眠配置（未激活的 `moa.presets` 等）同样携带旧引用，别只查激活项。完整流程见 `references/provider-ref-audit.md`。
 
 ### ⚠️ 边界条件 4：.env 中有同名 key 时取最后一个
 
@@ -1162,6 +1317,7 @@ hermes config set delegation.model ""
 5. **自定义 Provider 需要 base_url**：使用自定义 provider 时必须在 `config set` 中指定 `base_url`
 6. **profile 名称区分大小写**：`Profile` ≠ `profile`，使用 `hermes profile list` 确认准确名称
 7. **default profile 不加 -p**：对 default profile 操作时不加 `-p` 参数，这是最常见的错误
+8. **不能从 Gateway 进程内部重启自身**：`hermes gateway restart` / `hermes -p <name> gateway restart` 从 Gateway 内部的 terminal 执行会被阻止（SIGTERM 会传播杀死自身）。如需重启，使用 `systemctl restart hermes-gateway.service` 或从外部 shell 执行
 
 ---
 
@@ -1281,6 +1437,94 @@ def build_api_kwargs_extras(self, *, reasoning_config, model, **context):
 ```
 
 详细分析含完整源码和触发条件见 `references/deepseek-thinking-trap.md`。
+
+### 平台消息突然带推理块（display.show_reasoning）
+
+`display.show_reasoning: true`（代码默认值即 true）时，网关把模型最后一轮推理内容截 15 行、按 `reasoning_style`（code=代码块 / blockquote / subtext）包好，拼在发往聊天平台的消息**前面**（`gateway/run_turn.py` 的 `_hmwa_prepend_reasoning`）。该开关长期开着却"突然"开始显形的典型原因：主模型变了——旧模型不返回 `reasoning_content`（开关一直空转），新主模型是思考模型（真身切换、Coding Plan 别名映射到思考模型、或 fallback 到 deepseek-v4-flash 这类思考模型）后推理块立刻出现。
+
+诊断顺序：
+1. `grep -E 'show_reasoning|reasoning_style' ~/.hermes/config.yaml` —— 确认开关与样式（旧 config.yaml.bak* 备份可判断开关是何时引入的）
+2. 用 §3.6 方法 2.5 的 curl 确认主模型真身，并检查响应是否带 `reasoning_content` 字段
+3. 处置（先汇报等用户确认再动）：全局关闭 `hermes config set display.show_reasoning false` + 重启 gateway；或仅关单个平台：`hermes config set display.platforms.weixin.show_reasoning false`（YAML 键位 `display.platforms.<platform_key>.<setting>`，platform_key=平台名 weixin/feishu/telegram，CLI 平台用 cli；按平台值优先于全局 display.show_reasoning），改完重启 gateway 生效。手改 YAML 时在 display: 块内加两级嵌套，勿动其他键。
+
+⚠️ `display.show_reasoning`（是否把推理展示给用户）与 `reasoning` / `model.reasoning_effort`（是否让模型思考）是两个独立开关，排错时分开查。
+
+---
+
+---
+
+## 14. MOA（Mixture of Agents）配置
+
+MOA 是 Hermes 的多模型协作模式：多个 reference 模型各自独立回答问题，再由一个 aggregator 模型综合所有回答生成最终输出。
+
+### 14.1 配置结构
+
+```yaml
+moa:
+  default_preset: default          # 默认使用的 preset 名称
+  active_preset: ''                # 当前激活的 preset（留空 = 未激活）
+  presets:
+    default:                       # preset 名称（自定义；旧 glm-all 已于 2026-11-02 删除）
+      reference_models:            # 2+ 个参考模型，各自独立回答
+        - provider: hp-zai
+          model: glm-5.3-flash
+        - provider: deepseek
+          model: deepseek-v4-flash
+      aggregator:                  # 聚合模型，综合参考模型输出
+        provider: hp-zai
+        model: glm-5-turbo
+      reference_temperature: 0.6   # 参考模型温度（鼓励多样性）
+      aggregator_temperature: 0.4  # 聚合模型温度（低温度 = 更精确）
+      max_tokens: 4096
+      enabled: true
+```
+
+### 14.2 管理 Preset
+
+```bash
+# 查看所有 preset
+hermes moa list
+
+# 删除 preset
+hermes moa rm <preset-name>
+
+# CLI 只能设置简单 key-value（如 default_preset）
+hermes config set moa.default_preset <name>
+```
+
+**⚠️ 创建/编辑嵌套 preset 结构**：`hermes config set` 不支持嵌套对象，需直接编辑 config.yaml，但**必须用精确文本替换（patch/sed），禁止 `yaml.dump()` 回写**（见边界条件 6.5：会丢注释与格式）。删除 preset 用 `hermes config unset moa.presets.<name>`。
+
+### 14.3 使用 MOA
+
+MOA 通过聊天中的 `/moa` 命令触发，不能作为 CLI 参数：
+
+```bash
+# ✅ 正确：通过 chat -q 使用
+hermes chat -q "/moa default 你的问题" --cli
+
+# ❌ 错误：--moa 不是有效参数
+hermes chat -q "问题" --moa default  # 会报 unrecognized arguments
+```
+
+- `/moa <preset-name> <prompt>` — 使用指定 preset 执行 MOA
+- MOA 串行调用 reference → aggregator，正常耗时 20-40 秒
+
+### 14.4 Z.AI 接口选择规则（同 §4）
+
+MOA preset 中的模型同样遵守 Z.AI vs zai 接口规则：
+
+| 模型 | Provider | Base URL |
+|---|---|---|
+| glm-5.3-flash / glm-5-turbo / deepseek-v4-flash | hp-zai | coding plan 端（`/api/coding/paas/v4`） |
+| glm-4.6v（仅多模态） | hp-zai | 直连端（`/api/paas/v4`） |
+
+> MOA 模型通过 provider key（如 `hp-zai`）继承 `providers.hp-zai.api` 配置，preset 中无需重复指定 base_url。如需 MOA 中某模型走不同端点，需在 preset 中显式加 `base_url` 字段。
+
+### 14.5 已有 Preset 参考
+
+| Preset | Reference | Aggregator | 用途 |
+|---|---|---|---|
+| `default`（默认，唯一） | hp-zai:glm-5.3-flash + deepseek:deepseek-v4-flash | hp-zai:glm-5-turbo | 全国产混合（2026-11-02 现状）。旧 `glm-all` 与国际模型 preset 已删除（提督指示：glm-all 不要了） |
 
 ---
 
